@@ -47,7 +47,8 @@ $files = @(
     @{ Remote = "openspec/project.md.template"; Local = "openspec/project.md.template" },
     @{ Remote = ".claude/commands/auto-dev.md"; Local = ".claude/commands/auto-dev.md" },
     @{ Remote = "tools/auto-dev-scheduler/auto-dev-scheduler.ps1"; Local = "tools/auto-dev-scheduler/auto-dev-scheduler.ps1" },
-    @{ Remote = "tools/auto-dev-scheduler/run.bat"; Local = "tools/auto-dev-scheduler/run.bat" }
+    @{ Remote = "tools/auto-dev-scheduler/run.bat"; Local = "tools/auto-dev-scheduler/run.bat" },
+    @{ Remote = "docs/CLAUDE-GUIDE.md"; Local = "docs/CLAUDE-GUIDE.md" }
 )
 
 Write-Host ""
@@ -78,19 +79,28 @@ $claudeMd = Join-Path $TargetDir "CLAUDE.md"
 $openspecBlock = @"
 
 <!-- OPENSPEC:START -->
-# OpenSpec Instructions
+# OpenSpec + Auto-Dev Instructions
 
 These instructions are for AI assistants working in this project.
 
+## Auto-Dev Scheduler (Multi-Claude Parallel Execution)
+
+When user asks about Auto-Dev Scheduler usage, read ``@/docs/CLAUDE-GUIDE.md`` for:
+- How to start the scheduler
+- How to create AUTO-DEV.md task files
+- Task ID format and dependency syntax
+- Troubleshooting guide
+
+Quick start:
+- Run ``.\tools\auto-dev-scheduler\run.bat`` to launch GUI
+- Or ``.\tools\auto-dev-scheduler\run.bat "path\to\AUTO-DEV.md"`` to auto-load
+
+## OpenSpec (Spec-Driven Development)
+
 Always open ``@/openspec/AGENTS.md`` when the request:
 - Mentions planning or proposals (words like proposal, spec, change, plan)
-- Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
+- Introduces new capabilities, breaking changes, architecture shifts
 - Sounds ambiguous and you need the authoritative spec before coding
-
-Use ``@/openspec/AGENTS.md`` to learn:
-- How to create and apply change proposals
-- Spec format and conventions
-- Project structure and guidelines
 
 <!-- OPENSPEC:END -->
 "@

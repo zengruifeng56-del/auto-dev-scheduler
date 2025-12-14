@@ -89,9 +89,12 @@ irm https://raw.githubusercontent.com/zengruifeng56-del/auto-dev-scheduler/maste
 ```
 
 安装脚本会：
+
 1. 下载所有必需文件到当前目录
 2. 创建/更新 CLAUDE.md，添加 OpenSpec 引用
 3. 生成 project.md 模板供编辑
+
+
 
 ## 使用流程
 
@@ -188,24 +191,24 @@ powershell -File ".\tools\auto-dev-scheduler\auto-dev-scheduler.ps1" -AutoDevFil
 
 ### 第五步：处理异常
 
-| 情况 | 处理方式 |
-|------|----------|
+| 情况        | 处理方式            |
+| --------- | --------------- |
 | Worker 卡住 | 点击对应面板的「Kill」按钮 |
-| 需要人工干预 | 在输入框输入指令，按回车发送 |
-| 任务冲突 | 调度器自动重试，无需干预 |
-| 全部暂停 | 点击「Pause」，再点恢复 |
+| 需要人工干预    | 在输入框输入指令，按回车发送  |
+| 任务冲突      | 调度器自动重试，无需干预    |
+| 全部暂停      | 点击「Pause」，再点恢复  |
 
 ## 任务ID格式
 
 调度器支持通用格式 `XX-YYY`，示例：
 
-| 前缀 | 用途 | 示例 |
-|------|------|------|
-| `FE-` | 前端任务 | FE-01, FE-AUTH-01 |
-| `BE-` | 后端任务 | BE-API-01, BE-DB-02 |
-| `GM-` | 游戏管理 | GM-00, GM-TOOL-01 |
-| `TASK-` | 通用任务 | TASK-001, TASK-002 |
-| `TEST-` | 测试任务 | TEST-UNIT-01 |
+| 前缀      | 用途   | 示例                  |
+| ------- | ---- | ------------------- |
+| `FE-`   | 前端任务 | FE-01, FE-AUTH-01   |
+| `BE-`   | 后端任务 | BE-API-01, BE-DB-02 |
+| `GM-`   | 游戏管理 | GM-00, GM-TOOL-01   |
+| `TASK-` | 通用任务 | TASK-001, TASK-002  |
+| `TEST-` | 测试任务 | TEST-UNIT-01        |
 
 ## 依赖声明格式
 
@@ -259,15 +262,19 @@ powershell -File ".\tools\auto-dev-scheduler\auto-dev-scheduler.ps1" -AutoDevFil
 ## 常见问题
 
 ### Q: 调度器无法启动 Claude？
+
 确保 `claude` 命令在 PATH 中可用，运行 `claude --version` 验证。
 
 ### Q: 任务一直显示「执行中」但实际已完成？
+
 手动编辑 AUTO-DEV.md，将状态改为 `✅ 已完成（时间）`。
 
 ### Q: 如何添加新任务？
+
 在 AUTO-DEV.md 中添加 `### Task: XX-YY 任务名` 块，并更新波次图。
 
 ### Q: 支持 Mac/Linux 吗？
+
 调度器 GUI 目前仅支持 Windows。/auto-dev 命令本身跨平台可用。
 
 ## 更新日志
@@ -275,15 +282,18 @@ powershell -File ".\tools\auto-dev-scheduler\auto-dev-scheduler.ps1" -AutoDevFil
 ### v6.1 (2024-12)
 
 **新功能**
+
 - 命令行参数支持：`-AutoDevFile` 参数可指定启动时自动加载的文件
 - 耗时统计：显示运行中和已完成任务的耗时
 
 **Bug 修复**
+
 - 修复依赖解析问题：括号内注释（如 `可与 XX 并行`）不再被误识别为依赖
 - 修复耗时显示超过 1 小时回卷的问题（现在正确显示 `hh:mm:ss`）
 - 增强 TaskId 识别：支持从 git commit、Edit 操作、多种文本格式中识别
 
 **改进**
+
 - 依赖支持 `None` 作为空依赖标记（兼容英文项目）
 - 支持文件末尾无换行的情况
 

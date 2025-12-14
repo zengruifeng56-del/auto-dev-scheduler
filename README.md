@@ -97,24 +97,26 @@ irm https://raw.githubusercontent.com/zengruifeng56-del/auto-dev-scheduler/maste
 ## 使用流程
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  1. 安装          运行 install.ps1                          │
-│       ↓                                                     │
-│  2. 说需求        /openspec:proposal my-feature             │
-│       ↓           告诉 Claude 你要做什么                     │
-│       ↓                                                     │
-│  3. 讨论确认      Claude 提问 ←→ 你回答                      │
-│       ↓           直到双方理解一致                           │
-│       ↓                                                     │
-│  4. 生成任务      Claude 自动生成 AUTO-DEV.md               │
-│       ↓                                                     │
-│  5. 并发执行      /openspec:apply my-feature                │
-│       ↓           调度器启动，多 Claude 并行开发             │
-│       ↓                                                     │
-│  6. 测试验收      你测试功能，确认没问题                      │
-│       ↓                                                     │
-│  7. 归档          /openspec:archive my-feature              │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  1. 安装           运行 install.ps1                          │
+│       ↓                                                      │
+│  2. 配置项目       让 Claude 阅读 openspec 并填写项目信息      │
+│       ↓                                                      │
+│  3. 说需求         /openspec:proposal my-feature             │
+│       ↓            告诉 Claude 你要做什么                     │
+│       ↓                                                      │
+│  4. 讨论确认       Claude 提问 ←→ 你回答                      │
+│       ↓            直到双方理解一致                           │
+│       ↓                                                      │
+│  5. 生成任务       Claude 自动生成 AUTO-DEV.md               │
+│       ↓                                                      │
+│  6. 并发执行       /openspec:apply my-feature                │
+│       ↓            调度器启动，多 Claude 并行开发             │
+│       ↓                                                      │
+│  7. 测试验收       你测试功能，确认没问题                      │
+│       ↓                                                      │
+│  8. 归档           /openspec:archive my-feature              │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ### 第一步：安装
@@ -123,7 +125,21 @@ irm https://raw.githubusercontent.com/zengruifeng56-del/auto-dev-scheduler/maste
 irm https://raw.githubusercontent.com/zengruifeng56-del/auto-dev-scheduler/master/install.ps1 | iex
 ```
 
-### 第二步：告诉 Claude 你的需求
+### 第二步：配置项目
+
+告诉 Claude：
+
+```
+请阅读 openspec 目录，帮我填写项目配置信息
+```
+
+Claude 会阅读 `openspec/AGENTS.md` 和相关文档，然后帮你填写 `openspec/project.md`：
+- 项目名称
+- 技术栈
+- 任务ID前缀（如 FE-、BE-、TASK-）
+- 其他项目规范
+
+### 第三步：告诉 Claude 你的需求
 
 ```
 /openspec:proposal my-feature
@@ -133,7 +149,7 @@ irm https://raw.githubusercontent.com/zengruifeng56-del/auto-dev-scheduler/maste
 - "我要给系统加一个用户登录功能"
 - "帮我重构订单模块，支持多种支付方式"
 
-### 第三步：和 Claude 讨论确认
+### 第四步：和 Claude 讨论确认
 
 Claude 会：
 1. 提问澄清不明确的地方
@@ -142,13 +158,13 @@ Claude 会：
 
 **你需要**：回答问题，确认方案，直到双方理解一致。
 
-### 第四步：Claude 生成执行文件
+### 第五步：Claude 生成执行文件
 
 确认后，Claude 会自动生成：
 - `openspec/changes/my-feature/` - 方案文档
 - `openspec/execution/{项目}/AUTO-DEV.md` - **调度器执行文件（核心）**
 
-### 第五步：启动并发执行
+### 第六步：启动并发执行
 
 ```
 /openspec:apply my-feature
@@ -159,13 +175,13 @@ Claude 会：
 2. 多个 Claude 实例并行工作
 3. 实时查看各任务进度和日志
 
-### 第六步：测试验收
+### 第七步：测试验收
 
 所有任务完成后，**你自己测试**：
 - 功能是否正常
 - 是否符合预期
 
-### 第七步：归档（可选）
+### 第八步：归档（可选）
 
 测试通过后，归档这次变更：
 

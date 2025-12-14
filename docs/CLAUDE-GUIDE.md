@@ -9,27 +9,35 @@
 ### 完整使用流程
 
 ```
-1. 用户: /openspec:proposal my-feature
+1. 用户: "请阅读 openspec 目录，帮我填写项目配置"
+   Claude: 阅读文档，填写 project.md
+        ↓
+2. 用户: /openspec:proposal my-feature
    用户: "我要做xxx功能"
         ↓
-2. Claude: 提问澄清需求
+3. Claude: 提问澄清需求
    用户: 回答问题
    （循环直到双方理解一致）
         ↓
-3. Claude: 生成方案文档和 AUTO-DEV.md（核心！）
+4. Claude: 生成方案文档和 AUTO-DEV.md（核心！）
         ↓
-4. 用户: /openspec:apply my-feature
+5. 用户: /openspec:apply my-feature
    → 启动调度器，多 Claude 并发执行
         ↓
-5. 用户: 测试验收功能
+6. 用户: 测试验收功能
         ↓
-6. 用户: /openspec:archive my-feature
+7. 用户: /openspec:archive my-feature
    → 归档完成
 ```
 
 ### 你（Claude）的职责
 
-当用户使用 `/openspec:proposal` 后：
+**首次使用时**：
+- 用户让你阅读 openspec 目录
+- 你需要阅读 `openspec/AGENTS.md` 了解规范
+- 帮用户填写 `openspec/project.md`（项目名、技术栈、任务ID前缀等）
+
+**当用户使用 `/openspec:proposal` 后**：
 1. **理解需求**：通过提问澄清不明确的地方
 2. **达成一致**：确保你和用户对需求理解相同
 3. **生成文件**：proposal.md、design.md、tasks.md
@@ -39,6 +47,12 @@
 
 ### 用户问"怎么开始/怎么用"
 
+首次使用：
+```
+请阅读 openspec 目录，帮我填写项目配置
+```
+
+配置完成后：
 ```
 /openspec:proposal {功能名称}
 ```

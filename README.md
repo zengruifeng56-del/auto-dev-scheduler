@@ -1,49 +1,53 @@
 # OpenSpec + Auto-Dev Scheduler
 
-多 Claude 并发开发框架，让多个 Claude Code 实例同时执行开发任务，通过 Git 分布式锁机制避免冲突。
+基于 [OpenSpec](https://github.com/Fission-AI/OpenSpec) 的多 Claude 并发开发扩展。
+
+## 这是什么？
+
+```
+你的需求 → AI 理解项目 → AI 分析方案 → 多个 Claude 同时开发 → 你验收
+```
+
+**OpenSpec** 是规格驱动开发框架，让 AI 先理解、再动手：
+- 先写提案（proposal）说清楚要做什么
+- 拆解任务、分析依赖
+- 确认后再开始编码
+
+**Auto-Dev Scheduler** 是我们添加的并发执行能力：
+- 多个 Claude 实例同时工作
+- 自动分配任务、避免冲突
+- 可视化监控进度
+
+## 为什么需要先让 AI 理解项目？
+
+**这一步非常重要**。在开始任何开发前，你需要告诉 AI：
+
+| 信息 | 为什么重要 |
+|------|-----------|
+| **项目用途** | AI 知道这是做什么的，才能给出合理方案 |
+| **技术栈** | 用 React 还是 Vue？用 PostgreSQL 还是 MongoDB？ |
+| **代码规范** | 命名风格、文件组织、最佳实践 |
+| **领域知识** | 业务术语、流程、专业概念 |
+| **约束条件** | 性能要求、兼容性、禁止事项 |
+
+这些信息填写在 `openspec/project.md` 中，AI 会在每次工作前阅读它。
 
 ## 核心功能
 
-### 1. Auto-Dev Scheduler（GUI 调度器）
+### Auto-Dev Scheduler（调度器）
 
-可视化任务调度界面，主要功能：
+- 可视化 GUI，实时显示任务状态和日志
+- 支持 1-4 个 Claude 并行执行
+- Git 分布式锁，避免任务冲突
+- 自动管理任务依赖和执行顺序
 
-- **任务解析**：自动解析 AUTO-DEV.md 文件，识别任务ID、状态、依赖关系
-- **波次排序**：按并行波次图顺序显示任务，直观展示执行顺序
-- **并发控制**：支持 1-4 个 Claude 实例并行执行
-- **实时日志**：每个 Worker 独立日志面板，实时显示执行过程
-- **进度追踪**：进度条显示整体完成情况
-- **耗时统计**：显示运行中和已完成任务的耗时（支持超过1小时）
-- **Worker 管理**：
-  - 启动/暂停/停止全部
-  - 单独 Kill 某个 Worker
-  - 向 Worker 发送自定义消息
-- **日志导出**：导出所有 Worker 日志到文件
-- **字体调节**：日志面板字体大小可调
-- **深色主题**：VS Code 风格深色界面
-- **命令行参数**：支持启动时指定 AUTO-DEV.md 文件路径
+### OpenSpec（规格驱动）
 
-### 2. /auto-dev 命令（执行协议）
+- `/openspec:proposal` - 创建变更提案
+- `/openspec:apply` - 执行提案（启动调度器）
+- `/openspec:archive` - 归档已完成的变更
 
-Claude Code 的并发执行规范，核心机制：
-
-- **Git 分布式锁**：通过 git push 抢占任务，避免多实例冲突
-- **状态机管理**：
-  - `🟦 空闲` → 可认领
-  - `🟠 执行中（实例ID, 时间）` → 已被占用
-  - `✅ 已完成（时间）` → 完成
-- **依赖检查**：自动检查前置任务是否完成
-- **冲突处理**：push 失败自动回滚并重试
-- **质量保证**：强制通过测试、类型检查、构建
-
-### 3. OpenSpec（规格驱动开发）
-
-结构化的变更管理流程：
-
-- **提案驱动**：先写 proposal.md 说明为什么、改什么
-- **规格优先**：通过 spec.md 定义需求和验收标准
-- **任务拆分**：tasks.md 细粒度清单，AUTO-DEV.md 粗粒度并发任务
-- **变更归档**：完成后归档到 archive/，保留历史记录
+详细文档：[OpenSpec GitHub](https://github.com/Fission-AI/OpenSpec)
 
 ## 目录结构
 
@@ -125,7 +129,7 @@ irm https://raw.githubusercontent.com/zengruifeng56-del/auto-dev-scheduler/maste
 irm https://raw.githubusercontent.com/zengruifeng56-del/auto-dev-scheduler/master/install.ps1 | iex
 ```
 
-### 第二步：配置项目
+### 第二步：配置项目（关键！）
 
 告诉 Claude：
 
@@ -133,11 +137,17 @@ irm https://raw.githubusercontent.com/zengruifeng56-del/auto-dev-scheduler/maste
 请阅读 openspec 目录，帮我填写项目配置信息
 ```
 
-Claude 会阅读 `openspec/AGENTS.md` 和相关文档，然后帮你填写 `openspec/project.md`：
-- 项目名称
-- 技术栈
-- 任务ID前缀（如 FE-、BE-、TASK-）
-- 其他项目规范
+Claude 会帮你填写 `openspec/project.md`，包含：
+
+| 配置项 | 说明 | 示例 |
+|--------|------|------|
+| **项目用途** | 这个项目是做什么的 | "电商平台后台管理系统" |
+| **技术栈** | 使用的语言、框架、数据库 | TypeScript + React + PostgreSQL |
+| **代码规范** | 命名规则、文件组织 | "使用 ESLint，函数用 camelCase" |
+| **领域知识** | 业务术语和概念 | "订单状态：待支付→已支付→已发货" |
+| **约束条件** | 限制和要求 | "必须支持移动端，API < 200ms" |
+
+**为什么这步很重要？** 填写越详细，AI 给出的方案越贴合你的项目。
 
 ### 第三步：告诉 Claude 你的需求
 

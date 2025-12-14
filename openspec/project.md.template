@@ -1,19 +1,47 @@
-# Project Configuration
+# 项目配置
 
-## Project Name
-{Fill in project name}
+> 这是让 AI 理解你项目的关键文件。填写越详细，AI 的方案越准确。
 
-## Description
-{Fill in project description}
+## 项目用途
 
-## Tech Stack
-- Language: {Language}
-- Framework: {Framework}
-- Database: {Database}
+{描述这个项目是做什么的，解决什么问题，面向什么用户}
 
-## Conventions
-- {Coding convention 1}
-- {Coding convention 2}
+## 技术栈
 
-## Task ID Prefix
-{Recommended prefix for task IDs, e.g., GM-, FE-, BE-}
+- **语言**：{如 TypeScript、Python、Go}
+- **框架**：{如 React、Vue、Django、Express}
+- **数据库**：{如 PostgreSQL、MongoDB、MySQL}
+- **其他**：{如 Redis、Docker、Kubernetes}
+
+## 代码规范
+
+- {如：使用 ESLint + Prettier}
+- {如：函数命名使用 camelCase}
+- {如：组件使用 PascalCase}
+- {如：每个函数不超过 50 行}
+
+## 领域知识
+
+{描述项目的业务背景和专业术语，帮助 AI 理解业务逻辑}
+
+示例：
+- 这是一个电商系统，核心概念包括：商品(Product)、订单(Order)、购物车(Cart)
+- 用户分为：普通用户、VIP用户、商家
+- 订单状态流转：待支付 → 已支付 → 已发货 → 已完成
+
+## 约束条件
+
+{描述项目的限制和要求}
+
+- {如：必须兼容 IE11}
+- {如：API 响应时间 < 200ms}
+- {如：不能使用付费第三方服务}
+- {如：代码需要通过 CI 测试}
+
+## 任务 ID 前缀
+
+{用于 AUTO-DEV.md 中的任务命名，如：}
+- FE-（前端任务）
+- BE-（后端任务）
+- DB-（数据库任务）
+- TEST-（测试任务）

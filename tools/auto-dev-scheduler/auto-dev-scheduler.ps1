@@ -5,7 +5,12 @@
 .DESCRIPTION
     Multi-Claude concurrent task scheduler with generalized task ID support.
     Supports task IDs in format: XX-YYY (e.g., GM-00, FE-01, TASK-001, BE-AUTH-01)
+.PARAMETER AutoDevFile
+    Optional path to AUTO-DEV.md file. If provided, the file will be auto-loaded on startup.
 #>
+param(
+    [string]$AutoDevFile = ""
+)
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -36,6 +41,7 @@ $script:Theme = @{
 # ============================================================================
 # Global State
 # ============================================================================
+$script:AutoDevFileParam = $AutoDevFile  # Store command-line parameter
 $script:AutoDevFile = ""
 $script:ProjectRoot = ""
 $script:MaxParallel = 2
@@ -49,6 +55,7 @@ $script:TickInProgress = $false
 
 # Task data parsed from file (static structure)
 $script:AllTasks = @{}  # taskId -> { Id, Name, Status, Deps, Group }
+$script:TaskDurations = @{}  # taskId -> duration string (completed task durations)
 
 # ============================================================================
 # Styled Button Helper
@@ -130,12 +137,20 @@ function Parse-AutoDevFile {
             else { $status = "idle" }
         }
 
-        # Parse dependencies (generalized format)
+        # Parse dependencies (generalized format, remove parenthetical comments)
         $deps = @()
-        if ($block -match '\*\*依赖\*\*[：:]\s*(.+?)(?=\r?\n)') {
+        if ($block -match '\*\*依赖\*\*[：:]\s*(.+?)(?=\r?\n|$)') {
             $depLine = $Matches[1].Trim()
-            if ($depLine -ne '无' -and $depLine -ne '') {
-                $deps = $depLine -split '[,，、\s]+' | Where-Object { $_ -match '^[A-Z]+-' }
+            if ($depLine -ne '无' -and $depLine -ne 'None' -and $depLine -ne '') {
+                # Remove parenthetical comments (e.g., "(can run parallel with XX-YY)")
+                $depLine = $depLine -replace '[（(][^)）]*[）)]', ''
+                # Extract all task IDs in XX-YYY format
+                $depMatches = [regex]::Matches($depLine, '[A-Z]+-[A-Z0-9]+(?:-[A-Z0-9]+)*')
+                foreach ($dm in $depMatches) {
+                    if ($deps -notcontains $dm.Value) {  # Deduplicate
+                        $deps += $dm.Value
+                    }
+                }
             }
         }
 
@@ -326,16 +341,46 @@ function Parse-StreamJson {
                         if ($first.input) {
                             $input = $first.input
                             if ($input.file_path) { $result.toolDetail = $input.file_path -replace '^.*[\\/]', '' }
-                            elseif ($input.command) { $cmd = $input.command; if ($cmd.Length -gt 40) { $cmd = $cmd.Substring(0,40) + "..." }; $result.toolDetail = $cmd }
+                            elseif ($input.command) {
+                                $cmd = $input.command
+                                # Detect TaskId from git commit command
+                                if (-not $Worker.TaskId -and $cmd -match '(?i)Task\s+([A-Z]+-[A-Z0-9]+(?:-[A-Z0-9]+)*)') {
+                                    $Worker.TaskId = $Matches[1]
+                                }
+                                if ($cmd.Length -gt 40) { $cmd = $cmd.Substring(0,40) + "..." }
+                                $result.toolDetail = $cmd
+                            }
                             elseif ($input.pattern) { $result.toolDetail = "pattern: $($input.pattern)" }
                             elseif ($input.query) { $q = $input.query; if ($q.Length -gt 30) { $q = $q.Substring(0,30) + "..." }; $result.toolDetail = $q }
                             elseif ($input.PROMPT) { $p = $input.PROMPT; if ($p.Length -gt 40) { $p = $p.Substring(0,40) + "..." }; $result.toolDetail = $p }
+                            # Detect TaskId from Edit operation (lock acquisition)
+                            if (-not $Worker.TaskId -and $input.old_string -match '(?i)Task:\s+([A-Z]+-[A-Z0-9]+(?:-[A-Z0-9]+)*)') {
+                                $Worker.TaskId = $Matches[1]
+                            }
+                            if (-not $Worker.TaskId -and $input.new_string -match '(?i)Task:\s+([A-Z]+-[A-Z0-9]+(?:-[A-Z0-9]+)*)') {
+                                $Worker.TaskId = $Matches[1]
+                            }
                         }
                     } elseif ($first.type -eq "text") {
                         $result.text = $first.text
-                        # Generalized task ID detection
-                        if (-not $Worker.TaskId -and $first.text -match '(?i)Task\s+([A-Z]+-[A-Z0-9]+(?:-[A-Z0-9]+)*)') {
-                            $Worker.TaskId = $Matches[1]
+                        # Enhanced TaskId detection (multiple formats)
+                        if (-not $Worker.TaskId) {
+                            # Format 1: Task XX-YYY
+                            if ($first.text -match '(?i)Task\s+([A-Z]+-[A-Z0-9]+(?:-[A-Z0-9]+)*)') {
+                                $Worker.TaskId = $Matches[1]
+                            }
+                            # Format 2: XX-YYY task (Chinese)
+                            elseif ($first.text -match '([A-Z]+-[A-Z0-9]+(?:-[A-Z0-9]+)*)\s*任务') {
+                                $Worker.TaskId = $Matches[1]
+                            }
+                            # Format 3: Starting/executing XX-YYY
+                            elseif ($first.text -match '(?:开始执行|executing|starting)\s*([A-Z]+-[A-Z0-9]+(?:-[A-Z0-9]+)*)') {
+                                $Worker.TaskId = $Matches[1]
+                            }
+                            # Format 4: Lock/claim XX-YYY
+                            elseif ($first.text -match '(?:抢占|锁定|执行|locked|claimed)\s*([A-Z]+-[A-Z0-9]+(?:-[A-Z0-9]+)*)') {
+                                $Worker.TaskId = $Matches[1]
+                            }
                         }
                     }
                 }
@@ -354,9 +399,20 @@ function Parse-StreamJson {
                         $preview = $content -replace "`n", " " -replace "\s+", " "
                         if ($preview.Length -gt 50) { $preview = $preview.Substring(0,50) + "..." }
                         $result.resultPreview = $preview
-                        # Detect TaskId from tool_result (e.g., git commit message)
-                        if (-not $Worker.TaskId -and $content -match '(?i)Task\s+([A-Z]+-[A-Z0-9]+(?:-[A-Z0-9]+)*)') {
-                            $Worker.TaskId = $Matches[1]
+                        # Enhanced TaskId detection (multiple formats)
+                        if (-not $Worker.TaskId) {
+                            # Format 1: Task XX-YYY (git commit message)
+                            if ($content -match '(?i)Task\s+([A-Z]+-[A-Z0-9]+(?:-[A-Z0-9]+)*)') {
+                                $Worker.TaskId = $Matches[1]
+                            }
+                            # Format 2: lock: start Task XX-YYY
+                            elseif ($content -match '(?i)lock:\s*(?:开始执行|start)\s*Task\s+([A-Z]+-[A-Z0-9]+(?:-[A-Z0-9]+)*)') {
+                                $Worker.TaskId = $Matches[1]
+                            }
+                            # Format 3: feat: complete Task XX-YYY
+                            elseif ($content -match '(?i)feat:\s*(?:完成|complete)\s*Task\s+([A-Z]+-[A-Z0-9]+(?:-[A-Z0-9]+)*)') {
+                                $Worker.TaskId = $Matches[1]
+                            }
                         }
                     }
                     $Worker.CurrentTool = ""
@@ -534,7 +590,12 @@ function Update-TaskGrid {
             $duration = ""
             if ($w.StartTime) {
                 $elapsed = (Get-Date) - $w.StartTime
-                $duration = "{0:mm}:{0:ss}" -f $elapsed
+                # Fix: Support tasks running over 1 hour
+                if ($elapsed.TotalHours -ge 1) {
+                    $duration = $elapsed.ToString("hh\:mm\:ss")
+                } else {
+                    $duration = $elapsed.ToString("mm\:ss")
+                }
             }
             $runningWorkerIds[$tid] = $duration
         }
@@ -565,7 +626,13 @@ function Update-TaskGrid {
                     Default     { @{ Text = "? Unknown"; Color = [System.Drawing.Color]::Gray } }
                 }
 
-                $duration = if ($runningWorkerIds.ContainsKey($taskId)) { $runningWorkerIds[$taskId] } else { "" }
+                # Get duration: prefer running worker, fallback to completed record
+                $duration = ""
+                if ($runningWorkerIds.ContainsKey($taskId)) {
+                    $duration = $runningWorkerIds[$taskId]
+                } elseif ($script:TaskDurations.ContainsKey($taskId)) {
+                    $duration = $script:TaskDurations[$taskId]
+                }
                 $waveText = "W$($task.Wave)"
 
                 if ($existingRows.ContainsKey($taskId)) {
@@ -851,6 +918,15 @@ function Invoke-SchedulerTick {
                     [void]$worker.LogLines.Add("[$(Get-Date -Format 'HH:mm:ss')] [SYS] Task completed")
                     [void]$worker.FullLogLines.Add("[$(Get-Date -Format 'HH:mm:ss')] [SYS] Task completed")
                     $worker.State = if ($parsed.success) { "Completed" } else { "Failed" }
+                    # Record task duration (support over 1 hour)
+                    if ($worker.TaskId -and $worker.StartTime) {
+                        $elapsed = (Get-Date) - $worker.StartTime
+                        if ($elapsed.TotalHours -ge 1) {
+                            $script:TaskDurations[$worker.TaskId] = $elapsed.ToString("hh\:mm\:ss")
+                        } else {
+                            $script:TaskDurations[$worker.TaskId] = $elapsed.ToString("mm\:ss")
+                        }
+                    }
                     Stop-ClaudeWorker -Worker $worker
                     $completedWorkers += $wIdx
                     break
@@ -861,6 +937,15 @@ function Invoke-SchedulerTick {
                 [void]$worker.LogLines.Add("[$(Get-Date -Format 'HH:mm:ss')] [SYS] Process exited")
                 [void]$worker.FullLogLines.Add("[$(Get-Date -Format 'HH:mm:ss')] [SYS] Process exited")
                 $worker.State = "Completed"
+                # Record task duration (support over 1 hour)
+                if ($worker.TaskId -and $worker.StartTime) {
+                    $elapsed = (Get-Date) - $worker.StartTime
+                    if ($elapsed.TotalHours -ge 1) {
+                        $script:TaskDurations[$worker.TaskId] = $elapsed.ToString("hh\:mm\:ss")
+                    } else {
+                        $script:TaskDurations[$worker.TaskId] = $elapsed.ToString("mm\:ss")
+                    }
+                }
                 Stop-ClaudeWorker -Worker $worker
                 $completedWorkers += $wIdx
             }
@@ -1190,6 +1275,7 @@ function Show-MainForm {
         $script:IsPaused = $false
         $script:TickInProgress = $false
         $script:Workers.Clear()
+        $script:TaskDurations.Clear()  # Clear historical duration records
         $script:LastPanelWorkerIds = ""
         $btnStart.Enabled = $false
         $btnPause.Enabled = $true
@@ -1268,6 +1354,21 @@ function Show-MainForm {
         if ($script:Timer) { $script:Timer.Stop() }
         foreach ($wIdx in @($script:Workers.Keys)) { Stop-ClaudeWorker -Worker $script:Workers[$wIdx] }
     })
+
+    # Auto-load file if parameter provided
+    if ($script:AutoDevFileParam -and (Test-Path $script:AutoDevFileParam)) {
+        $script:TxtFile.Text = $script:AutoDevFileParam
+        $script:AutoDevFile = $script:AutoDevFileParam
+        $script:ProjectRoot = (Get-Item $script:AutoDevFileParam).Directory.Parent.Parent.Parent.FullName
+
+        $script:AllTasks = Parse-AutoDevFile -FilePath $script:AutoDevFileParam
+        Update-Progress
+        Update-TaskGrid
+
+        $btnStart.Enabled = $true
+        $script:StatusLabel.Text = "Loaded $($script:AllTasks.Count) tasks, click Start"
+        $script:StatusLabel.ForeColor = $script:Theme.AccentBlue
+    }
 
     [void]$script:Form.ShowDialog()
 }

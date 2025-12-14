@@ -317,4 +317,10 @@ Claude 会：
 ## 相关链接
 
 - [Claude Code 官方文档](https://docs.anthropic.com/claude-code)
+- [OpenSpec GitHub](https://github.com/Fission-AI/OpenSpec)
 - [OpenSpec 规范说明](./openspec/AGENTS.md)
+
+## 致谢
+
+- **佬友 @Me** - AUTO-DEV 并发执行方案的原创设计
+- **大米林** 与 **隐** - OpenSpec 规格驱动开发的使用建议

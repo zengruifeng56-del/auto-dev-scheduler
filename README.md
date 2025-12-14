@@ -94,8 +94,6 @@ irm https://raw.githubusercontent.com/zengruifeng56-del/auto-dev-scheduler/maste
 2. 创建/更新 CLAUDE.md，添加 OpenSpec 引用
 3. 生成 project.md 模板供编辑
 
-
-
 ## 使用流程
 
 ### 第一步：配置项目
@@ -177,6 +175,7 @@ Wave 3:  [FE-02 集成测试]
 例如：`/openspec:apply my-feature`
 
 该命令会自动：
+
 1. 读取 `openspec/changes/{方案文件夹名}/` 下的 proposal、design、tasks
 2. 定位对应的 `openspec/execution/{项目}/AUTO-DEV.md`
 3. 启动 Auto-Dev Scheduler GUI 并加载任务文件
@@ -281,7 +280,7 @@ Wave 3:  [FE-02 集成测试]
 
 ## 更新日志
 
-### v6.1 (2024-12)
+### v0.6.1 (2024-12)
 
 **新功能**
 
@@ -299,7 +298,7 @@ Wave 3:  [FE-02 集成测试]
 - 依赖支持 `None` 作为空依赖标记（兼容英文项目）
 - 支持文件末尾无换行的情况
 
-### v6.0
+### v0.6.0
 
 - 初始版本
 - 深色主题 GUI

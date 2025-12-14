@@ -1,0 +1,87 @@
+# {Project Name} Concurrent Development Tasks
+
+> Source OpenSpec: [{change-id}](../../changes/{change-id}/)
+
+---
+
+## Project Overview
+
+**Goal**: {Project goal}
+
+**Tech Stack**: {Tech stack}
+
+---
+
+## Wave Chart
+
+```
+Wave 1:  [TASK-00 Initial task]
+              ↓
+Wave 2:  [TASK-01] ←→ [TASK-02]  (parallel)
+              ↓
+Wave 3:  [TASK-03]
+```
+
+---
+
+## Task Details
+
+### Task: TASK-00 Initial Task
+
+**Estimated Context**: ~30k tokens
+**Status**: 🟦 Idle
+**Dependencies**: None
+
+**Scope**:
+- [ ] Task item 1
+- [ ] Task item 2
+
+**Acceptance Criteria**:
+- Criterion 1
+- Criterion 2
+
+---
+
+### Task: TASK-01 Task Name
+
+**Estimated Context**: ~40k tokens
+**Status**: 🟦 Idle
+**Dependencies**: TASK-00
+
+**Scope**:
+- [ ] Task item
+
+**Acceptance Criteria**:
+- Criterion
+
+---
+
+### Task: TASK-02 Task Name
+
+**Estimated Context**: ~35k tokens
+**Status**: 🟦 Idle
+**Dependencies**: TASK-00
+
+**Scope**:
+- [ ] Task item
+
+**Acceptance Criteria**:
+- Criterion
+
+---
+
+### Task: TASK-03 Final Task
+
+**Estimated Context**: ~50k tokens
+**Status**: 🟦 Idle
+**Dependencies**: TASK-01, TASK-02
+
+**Scope**:
+- [ ] Task item
+
+**Acceptance Criteria**:
+- Criterion
+
+---
+
+(Add more tasks as needed...)

@@ -1,0 +1,19 @@
+# Project Configuration
+
+## Project Name
+{Fill in project name}
+
+## Description
+{Fill in project description}
+
+## Tech Stack
+- Language: {Language}
+- Framework: {Framework}
+- Database: {Database}
+
+## Conventions
+- {Coding convention 1}
+- {Coding convention 2}
+
+## Task ID Prefix
+{Recommended prefix for task IDs, e.g., GM-, FE-, BE-}

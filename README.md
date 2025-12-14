@@ -94,9 +94,10 @@ irm https://raw.githubusercontent.com/zengruifeng56-del/auto-dev-scheduler/maste
 
 安装脚本会：
 
-1. 下载所有必需文件到当前目录
-2. 创建/更新 CLAUDE.md，添加 OpenSpec 引用
-3. 生成 project.md 模板供编辑
+1. 下载 OpenSpec 核心文件（AGENTS.md、project.md 模板）
+2. 下载 OpenSpec 命令（`/openspec:proposal`、`/openspec:apply`、`/openspec:archive`）
+3. 下载 Auto-Dev 调度器和 `/auto-dev` 命令
+4. 创建/更新 CLAUDE.md，添加 OpenSpec 引用
 
 ## 使用流程
 

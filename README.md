@@ -323,5 +323,6 @@ Claude 会：
 
 ## 致谢
 
+- **[OpenSpec](https://github.com/Fission-AI/OpenSpec)** - 规格驱动开发框架
 - **佬友 @Me** - AUTO-DEV 并发执行方案的原创设计
-- **大米林** 与 **隐** - OpenSpec 规格驱动开发的使用建议
+- **大米林** 与 **隐** - OpenSpec 使用建议

@@ -41,13 +41,20 @@ function Download-File {
 
 # Files to download
 $files = @(
+    # OpenSpec core files
     @{ Remote = "openspec/AGENTS.md"; Local = "openspec/AGENTS.md" },
+    @{ Remote = "openspec/project.md.template"; Local = "openspec/project.md.template" },
     @{ Remote = "openspec/execution/README.md"; Local = "openspec/execution/README.md" },
     @{ Remote = "openspec/execution/AUTO-DEV.md.template"; Local = "openspec/execution/AUTO-DEV.md.template" },
-    @{ Remote = "openspec/project.md.template"; Local = "openspec/project.md.template" },
+    # OpenSpec slash commands
+    @{ Remote = ".claude/commands/openspec/proposal.md"; Local = ".claude/commands/openspec/proposal.md" },
+    @{ Remote = ".claude/commands/openspec/apply.md"; Local = ".claude/commands/openspec/apply.md" },
+    @{ Remote = ".claude/commands/openspec/archive.md"; Local = ".claude/commands/openspec/archive.md" },
+    # Auto-Dev command and scheduler
     @{ Remote = ".claude/commands/auto-dev.md"; Local = ".claude/commands/auto-dev.md" },
     @{ Remote = "tools/auto-dev-scheduler/auto-dev-scheduler.ps1"; Local = "tools/auto-dev-scheduler/auto-dev-scheduler.ps1" },
     @{ Remote = "tools/auto-dev-scheduler/run.bat"; Local = "tools/auto-dev-scheduler/run.bat" },
+    # Documentation
     @{ Remote = "docs/CLAUDE-GUIDE.md"; Local = "docs/CLAUDE-GUIDE.md" }
 )
 

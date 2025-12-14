@@ -2,22 +2,51 @@
 
 本文档供 Claude 读取，帮助用户使用 Auto-Dev Scheduler。
 
+## 核心概念（必读）
+
+**AUTO-DEV.md 是调度器执行的核心文件**。没有这个文件，调度器无法工作。
+
+### OpenSpec 完整流程
+
+```
+用户需求
+    ↓
+/openspec:proposal {change-id}
+    ↓
+生成 openspec/changes/{change-id}/
+├── proposal.md   (为什么、改什么)
+├── design.md     (技术决策)
+├── tasks.md      (细粒度清单)
+└── specs/        (规格变更)
+    ↓
+【关键】生成 openspec/execution/{项目}/AUTO-DEV.md
+    ↓
+/openspec:apply {change-id}
+    ↓
+启动 Auto-Dev Scheduler → 多 Claude 并发执行
+```
+
+**重要**：使用 `/openspec:proposal` 完成需求分析后，**必须**生成 `AUTO-DEV.md` 文件，这是调度器的执行入口。
+
 ## 快速回答模板
 
 ### 用户问"怎么启动调度器"
 
-```powershell
-# 在项目根目录运行
-.\tools\auto-dev-scheduler\run.bat
+使用 `/openspec:apply` 命令一键启动：
 
-# 或指定任务文件直接启动
-.\tools\auto-dev-scheduler\run.bat "openspec\execution\{项目名}\AUTO-DEV.md"
 ```
+/openspec:apply {方案文件夹名}
+```
+
+例如：`/openspec:apply my-feature`
+
+该命令会自动定位 AUTO-DEV.md 并启动调度器。
 
 ### 用户问"怎么创建任务文件"
 
-1. 创建文件 `openspec/execution/{项目名}/AUTO-DEV.md`
-2. 使用以下模板：
+1. 先使用 `/openspec:proposal {change-id}` 完成需求分析
+2. 然后创建 `openspec/execution/{项目名}/AUTO-DEV.md`
+3. 使用以下模板：
 
 ```markdown
 # {项目名} 并发开发任务
@@ -122,6 +151,6 @@ Wave 3:  [TASK-04 最后任务]
 | 调度器主程序 | `tools/auto-dev-scheduler/auto-dev-scheduler.ps1` |
 | 启动脚本 | `tools/auto-dev-scheduler/run.bat` |
 | /auto-dev 命令 | `.claude/commands/auto-dev.md` |
-| 任务文件 | `openspec/execution/{项目}/AUTO-DEV.md` |
+| 任务文件（核心） | `openspec/execution/{项目}/AUTO-DEV.md` |
 | 项目配置 | `openspec/project.md` |
 | AI 代理指南 | `openspec/AGENTS.md` |

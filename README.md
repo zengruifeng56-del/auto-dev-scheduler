@@ -168,16 +168,18 @@ Wave 3:  [FE-02 集成测试]
 
 ### 第三步：启动调度器
 
-```powershell
-# 方式1：直接启动，手动选择文件
-.\tools\auto-dev-scheduler\run.bat
+使用 `/openspec:apply` 命令一键启动：
 
-# 方式2：指定文件启动（自动加载）
-.\tools\auto-dev-scheduler\run.bat "openspec\execution\my-project\AUTO-DEV.md"
-
-# 方式3：PowerShell 直接调用
-powershell -File ".\tools\auto-dev-scheduler\auto-dev-scheduler.ps1" -AutoDevFile "path\to\AUTO-DEV.md"
 ```
+/openspec:apply {方案文件夹名}
+```
+
+例如：`/openspec:apply my-feature`
+
+该命令会自动：
+1. 读取 `openspec/changes/{方案文件夹名}/` 下的 proposal、design、tasks
+2. 定位对应的 `openspec/execution/{项目}/AUTO-DEV.md`
+3. 启动 Auto-Dev Scheduler GUI 并加载任务文件
 
 ### 第四步：执行任务
 

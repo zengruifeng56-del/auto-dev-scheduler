@@ -96,101 +96,84 @@ irm https://raw.githubusercontent.com/zengruifeng56-del/auto-dev-scheduler/maste
 
 ## 使用流程
 
-### 第一步：配置项目
-
-编辑 `openspec/project.md`：
-
-```markdown
-# Project Configuration
-
-## Project Name
-我的项目
-
-## Tech Stack
-- Language: TypeScript
-- Framework: React + Node.js
-- Database: PostgreSQL
-
-## Task ID Prefix
-FE-（前端）、BE-（后端）、TASK-（通用）
+```
+┌─────────────────────────────────────────────────────────────┐
+│  1. 安装          运行 install.ps1                          │
+│       ↓                                                     │
+│  2. 说需求        /openspec:proposal my-feature             │
+│       ↓           告诉 Claude 你要做什么                     │
+│       ↓                                                     │
+│  3. 讨论确认      Claude 提问 ←→ 你回答                      │
+│       ↓           直到双方理解一致                           │
+│       ↓                                                     │
+│  4. 生成任务      Claude 自动生成 AUTO-DEV.md               │
+│       ↓                                                     │
+│  5. 并发执行      /openspec:apply my-feature                │
+│       ↓           调度器启动，多 Claude 并行开发             │
+│       ↓                                                     │
+│  6. 测试验收      你测试功能，确认没问题                      │
+│       ↓                                                     │
+│  7. 归档          /openspec:archive my-feature              │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### 第二步：创建任务文件
+### 第一步：安装
 
-创建 `openspec/execution/{项目名}/AUTO-DEV.md`：
-
-```markdown
-# 项目名 并发开发任务
-
-## 并行波次图
-
-Wave 1:  [BE-01 数据库模型]
-              ↓
-Wave 2:  [BE-02 API接口] ←→ [FE-01 页面组件]  (可并行)
-              ↓
-Wave 3:  [FE-02 集成测试]
-
-## 任务详情
-
-### Task: BE-01 数据库模型
-
-**预估上下文**：~30k tokens
-**状态**：🟦 空闲
-**依赖**：无
-
-**范围**：
-- [ ] 创建 User 表
-- [ ] 创建 Order 表
-- [ ] 添加索引
-
-**验收标准**：
-- 迁移脚本可执行
-- 类型定义完整
-
----
-
-### Task: BE-02 API接口
-
-**预估上下文**：~40k tokens
-**状态**：🟦 空闲
-**依赖**：BE-01
-
-**范围**：
-- [ ] GET /users
-- [ ] POST /orders
-
-**验收标准**：
-- 接口文档完整
-- 单元测试通过
+```powershell
+irm https://raw.githubusercontent.com/zengruifeng56-del/auto-dev-scheduler/master/install.ps1 | iex
 ```
 
-### 第三步：启动调度器
-
-使用 `/openspec:apply` 命令一键启动：
+### 第二步：告诉 Claude 你的需求
 
 ```
-/openspec:apply {方案文件夹名}
+/openspec:proposal my-feature
 ```
 
-例如：`/openspec:apply my-feature`
+然后用自然语言描述你要做什么，比如：
+- "我要给系统加一个用户登录功能"
+- "帮我重构订单模块，支持多种支付方式"
 
-该命令会自动：
+### 第三步：和 Claude 讨论确认
 
-1. 读取 `openspec/changes/{方案文件夹名}/` 下的 proposal、design、tasks
-2. 定位对应的 `openspec/execution/{项目}/AUTO-DEV.md`
-3. 启动 Auto-Dev Scheduler GUI 并加载任务文件
+Claude 会：
+1. 提问澄清不明确的地方
+2. 分析技术方案
+3. 拆解任务和依赖关系
 
-### 第四步：执行任务
+**你需要**：回答问题，确认方案，直到双方理解一致。
 
-1. **选择文件**：点击「Browse...」选择 AUTO-DEV.md
-2. **设置并发**：选择 1-4 个并发 Worker
-3. **点击开始**：调度器自动启动 Claude 实例
-4. **监控进度**：
-   - 上方表格显示所有任务状态
-   - 下方面板显示各 Worker 实时日志
-   - 双击日志面板查看完整日志
+### 第四步：Claude 生成执行文件
 
-### 第五步：处理异常
+确认后，Claude 会自动生成：
+- `openspec/changes/my-feature/` - 方案文档
+- `openspec/execution/{项目}/AUTO-DEV.md` - **调度器执行文件（核心）**
+
+### 第五步：启动并发执行
+
+```
+/openspec:apply my-feature
+```
+
+调度器 GUI 启动后：
+1. 点击「Start」开始执行
+2. 多个 Claude 实例并行工作
+3. 实时查看各任务进度和日志
+
+### 第六步：测试验收
+
+所有任务完成后，**你自己测试**：
+- 功能是否正常
+- 是否符合预期
+
+### 第七步：归档（可选）
+
+测试通过后，归档这次变更：
+
+```
+/openspec:archive my-feature
+```
+
+### 异常处理
 
 | 情况        | 处理方式            |
 | --------- | --------------- |

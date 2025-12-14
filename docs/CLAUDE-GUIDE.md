@@ -6,47 +6,60 @@
 
 **AUTO-DEV.md 是调度器执行的核心文件**。没有这个文件，调度器无法工作。
 
-### OpenSpec 完整流程
+### 完整使用流程
 
 ```
-用户需求
-    ↓
-/openspec:proposal {change-id}
-    ↓
-生成 openspec/changes/{change-id}/
-├── proposal.md   (为什么、改什么)
-├── design.md     (技术决策)
-├── tasks.md      (细粒度清单)
-└── specs/        (规格变更)
-    ↓
-【关键】生成 openspec/execution/{项目}/AUTO-DEV.md
-    ↓
-/openspec:apply {change-id}
-    ↓
-启动 Auto-Dev Scheduler → 多 Claude 并发执行
+1. 用户: /openspec:proposal my-feature
+   用户: "我要做xxx功能"
+        ↓
+2. Claude: 提问澄清需求
+   用户: 回答问题
+   （循环直到双方理解一致）
+        ↓
+3. Claude: 生成方案文档和 AUTO-DEV.md（核心！）
+        ↓
+4. 用户: /openspec:apply my-feature
+   → 启动调度器，多 Claude 并发执行
+        ↓
+5. 用户: 测试验收功能
+        ↓
+6. 用户: /openspec:archive my-feature
+   → 归档完成
 ```
 
-**重要**：使用 `/openspec:proposal` 完成需求分析后，**必须**生成 `AUTO-DEV.md` 文件，这是调度器的执行入口。
+### 你（Claude）的职责
+
+当用户使用 `/openspec:proposal` 后：
+1. **理解需求**：通过提问澄清不明确的地方
+2. **达成一致**：确保你和用户对需求理解相同
+3. **生成文件**：proposal.md、design.md、tasks.md
+4. **必须生成 AUTO-DEV.md**：这是调度器的执行入口，没有它无法并发执行
 
 ## 快速回答模板
 
-### 用户问"怎么启动调度器"
+### 用户问"怎么开始/怎么用"
 
-使用 `/openspec:apply` 命令一键启动：
+```
+/openspec:proposal {功能名称}
+```
+
+然后告诉我你要做什么，我会帮你分析需求、拆解任务。
+
+### 用户问"怎么启动调度器/执行"
 
 ```
 /openspec:apply {方案文件夹名}
 ```
 
-例如：`/openspec:apply my-feature`
+### 用户问"怎么归档"
 
-该命令会自动定位 AUTO-DEV.md 并启动调度器。
+```
+/openspec:archive {方案文件夹名}
+```
 
-### 用户问"怎么创建任务文件"
+### 用户问"AUTO-DEV.md 怎么写"
 
-1. 先使用 `/openspec:proposal {change-id}` 完成需求分析
-2. 然后创建 `openspec/execution/{项目名}/AUTO-DEV.md`
-3. 使用以下模板：
+使用以下模板：
 
 ```markdown
 # {项目名} 并发开发任务
@@ -134,15 +147,9 @@ Wave 3:  [TASK-04 最后任务]
 
 ### 用户问"/auto-dev 命令是什么"
 
-`/auto-dev` 是 Claude Code 的自定义命令，定义在 `.claude/commands/auto-dev.md`。
+`/auto-dev` 是调度器内部使用的命令，定义在 `.claude/commands/auto-dev.md`。
 
-功能：
-1. 扫描 `openspec/execution/*/AUTO-DEV.md` 找可执行任务
-2. 通过 git push 抢占任务锁
-3. 执行任务内容
-4. 完成后更新状态并释放锁
-
-调度器会自动向每个 Worker 发送 `/auto-dev` 命令启动执行。
+用户不需要直接使用它，调度器会自动向每个 Worker 发送这个命令。
 
 ## 文件位置速查
 

@@ -3,7 +3,8 @@
 .SYNOPSIS
     Install OpenSpec + Auto-Dev to current project
 .DESCRIPTION
-    Copies openspec/, .claude/commands/, tools/auto-dev-scheduler/ to target directory
+    Downloads and installs openspec/, .claude/commands/, tools/auto-dev-scheduler/
+    Supports both online and local installation
 #>
 
 param(
@@ -11,7 +12,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$RepoBase = "https://raw.githubusercontent.com/zengruifeng56-del/auto-dev-scheduler/master"
 
 Write-Host "=== OpenSpec + Auto-Dev Install Script ===" -ForegroundColor Cyan
 Write-Host "Target directory: $TargetDir"
@@ -22,47 +23,55 @@ if (-not (Test-Path $TargetDir)) {
     exit 1
 }
 
-# Copy openspec/
-$srcOpenspec = Join-Path $ScriptDir "openspec"
-$dstOpenspec = Join-Path $TargetDir "openspec"
-if (Test-Path $dstOpenspec) {
-    Write-Warning "openspec/ already exists, skipping (delete manually to overwrite)"
-} else {
-    Copy-Item -Path $srcOpenspec -Destination $dstOpenspec -Recurse
-    Write-Host "[OK] Copied openspec/" -ForegroundColor Green
+# Helper function to download file
+function Download-File {
+    param([string]$Url, [string]$Dest)
+    $dir = Split-Path -Parent $Dest
+    if (-not (Test-Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+    try {
+        Invoke-WebRequest -Uri $Url -OutFile $Dest -UseBasicParsing
+        return $true
+    } catch {
+        Write-Warning "Failed to download: $Url"
+        return $false
+    }
 }
 
-# Copy .claude/commands/
-$srcCommands = Join-Path $ScriptDir ".claude\commands"
-$dstCommands = Join-Path $TargetDir ".claude\commands"
-if (-not (Test-Path (Join-Path $TargetDir ".claude"))) {
-    New-Item -ItemType Directory -Path (Join-Path $TargetDir ".claude") | Out-Null
-}
-if (-not (Test-Path $dstCommands)) {
-    New-Item -ItemType Directory -Path $dstCommands | Out-Null
-}
-$autodevCmd = Join-Path $srcCommands "auto-dev.md"
-$dstAutodevCmd = Join-Path $dstCommands "auto-dev.md"
-if (Test-Path $dstAutodevCmd) {
-    Write-Warning "auto-dev.md already exists, skipping"
-} else {
-    Copy-Item -Path $autodevCmd -Destination $dstAutodevCmd
-    Write-Host "[OK] Copied .claude/commands/auto-dev.md" -ForegroundColor Green
+# Files to download
+$files = @(
+    @{ Remote = "openspec/AGENTS.md"; Local = "openspec/AGENTS.md" },
+    @{ Remote = "openspec/execution/README.md"; Local = "openspec/execution/README.md" },
+    @{ Remote = "openspec/execution/AUTO-DEV.md.template"; Local = "openspec/execution/AUTO-DEV.md.template" },
+    @{ Remote = "openspec/project.md.template"; Local = "openspec/project.md.template" },
+    @{ Remote = ".claude/commands/auto-dev.md"; Local = ".claude/commands/auto-dev.md" },
+    @{ Remote = "tools/auto-dev-scheduler/auto-dev-scheduler.ps1"; Local = "tools/auto-dev-scheduler/auto-dev-scheduler.ps1" },
+    @{ Remote = "tools/auto-dev-scheduler/run.bat"; Local = "tools/auto-dev-scheduler/run.bat" }
+)
+
+Write-Host ""
+Write-Host "Downloading files..." -ForegroundColor Yellow
+
+$downloaded = 0
+foreach ($file in $files) {
+    $dest = Join-Path $TargetDir $file.Local
+    if (Test-Path $dest) {
+        Write-Host "  [SKIP] $($file.Local) (already exists)" -ForegroundColor Gray
+        continue
+    }
+    $url = "$RepoBase/$($file.Remote)"
+    Write-Host "  [DOWN] $($file.Local)..." -NoNewline
+    if (Download-File -Url $url -Dest $dest) {
+        Write-Host " OK" -ForegroundColor Green
+        $downloaded++
+    } else {
+        Write-Host " FAILED" -ForegroundColor Red
+    }
 }
 
-# Copy tools/auto-dev-scheduler/
-$srcScheduler = Join-Path $ScriptDir "tools\auto-dev-scheduler"
-$dstTools = Join-Path $TargetDir "tools"
-$dstScheduler = Join-Path $dstTools "auto-dev-scheduler"
-if (-not (Test-Path $dstTools)) {
-    New-Item -ItemType Directory -Path $dstTools | Out-Null
-}
-if (Test-Path $dstScheduler) {
-    Write-Warning "tools/auto-dev-scheduler/ already exists, skipping"
-} else {
-    Copy-Item -Path $srcScheduler -Destination $dstScheduler -Recurse
-    Write-Host "[OK] Copied tools/auto-dev-scheduler/" -ForegroundColor Green
-}
+Write-Host ""
+Write-Host "Downloaded $downloaded files" -ForegroundColor Cyan
 
 # Check if CLAUDE.md needs OpenSpec reference
 $claudeMd = Join-Path $TargetDir "CLAUDE.md"
@@ -100,8 +109,8 @@ if (Test-Path $claudeMd) {
 }
 
 # Rename template files if needed
-$projectTemplate = Join-Path $dstOpenspec "project.md.template"
-$projectMd = Join-Path $dstOpenspec "project.md"
+$projectTemplate = Join-Path $TargetDir "openspec/project.md.template"
+$projectMd = Join-Path $TargetDir "openspec/project.md"
 if ((Test-Path $projectTemplate) -and -not (Test-Path $projectMd)) {
     Rename-Item -Path $projectTemplate -NewName "project.md"
     Write-Host "[OK] Renamed project.md.template -> project.md (please edit)" -ForegroundColor Green

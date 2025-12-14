@@ -13,7 +13,10 @@
 在目标项目根目录运行 PowerShell：
 
 ```powershell
-# 本地安装（如果已下载）
+# 方式1：在线安装（推荐）
+irm https://raw.githubusercontent.com/zengruifeng56-del/auto-dev-scheduler/master/install.ps1 | iex
+
+# 方式2：本地安装（如果已下载）
 .\path\to\auto-dev-scheduler\install.ps1
 ```
 

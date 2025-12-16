@@ -103,6 +103,54 @@ irm https://raw.githubusercontent.com/zengruifeng56-del/auto-dev-scheduler/maste
 3. 下载 Auto-Dev 调度器和 `/auto-dev` 命令
 4. 创建/更新 CLAUDE.md，添加 OpenSpec 引用
 
+## 调度器打包
+
+调度器是 Electron 桌面应用，你可以选择**开发模式运行**或**打包成安装程序**。
+
+### 开发模式运行（推荐开发者）
+
+```bash
+cd tools/auto-dev-scheduler-web
+npm install
+npm run dev
+```
+
+### 打包成安装程序（推荐分发）
+
+```bash
+cd tools/auto-dev-scheduler-web
+
+# 1. 安装依赖
+npm install
+
+# 2. 打包 Windows 安装程序
+npm run build:win
+```
+
+打包完成后，安装程序生成在：
+
+```
+tools/auto-dev-scheduler-web/release/Auto-Dev-Scheduler-Setup-1.0.0.exe
+```
+
+### 打包命令说明
+
+| 命令 | 说明 |
+|------|------|
+| `npm run dev` | 开发模式，热重载 |
+| `npm run build` | 仅构建，不打包 |
+| `npm run build:win` | 构建并打包 Windows 安装程序 |
+| `npm run typecheck` | TypeScript 类型检查 |
+
+### 技术栈
+
+- **Electron 28** - 桌面应用框架
+- **Vue 3.4** - 前端框架
+- **TypeScript** - 类型安全
+- **Element Plus** - UI 组件库
+- **Pinia** - 状态管理
+- **electron-builder** - 打包工具
+
 ## 使用流程
 
 ```

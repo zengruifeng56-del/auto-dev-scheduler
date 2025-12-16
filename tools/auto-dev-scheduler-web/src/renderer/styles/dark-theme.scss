@@ -1,0 +1,295 @@
+// VS Code Dark Theme Palette for Auto-Dev Scheduler Web
+// =============================================================================
+
+:root {
+  color-scheme: dark;
+
+  // Core theme colors
+  --vscode-bg: #2d2d30;
+  --vscode-panel-bg: #252526;
+  --vscode-input-bg: #1e1e1e;
+  --vscode-fore-text: #dcdcdc;
+  --vscode-fore-text-dim: #969696;
+  --vscode-accent-blue: #007acc;
+  --vscode-accent-green: #3c783c;
+  --vscode-accent-orange: #c88c32;
+  --vscode-accent-red: #cd4646;
+  --vscode-border: #434346;
+  --vscode-selection: #333334;
+
+  // Element Plus Variable Overrides - Colors
+  --el-color-primary: var(--vscode-accent-blue);
+  --el-color-success: var(--vscode-accent-green);
+  --el-color-warning: var(--vscode-accent-orange);
+  --el-color-danger: var(--vscode-accent-red);
+  --el-color-info: var(--vscode-fore-text-dim);
+
+  // RGB variants for Element Plus alpha calculations
+  --el-color-primary-rgb: 0, 122, 204;
+  --el-color-success-rgb: 60, 120, 60;
+  --el-color-warning-rgb: 200, 140, 50;
+  --el-color-danger-rgb: 205, 70, 70;
+  --el-color-error-rgb: 205, 70, 70;
+  --el-color-info-rgb: 150, 150, 150;
+
+  // Background colors
+  --el-bg-color: var(--vscode-bg);
+  --el-bg-color-page: var(--vscode-bg);
+  --el-bg-color-overlay: var(--vscode-panel-bg);
+  --el-fill-color-blank: var(--vscode-input-bg);
+
+  // Fill colors
+  --el-fill-color: var(--vscode-panel-bg);
+  --el-fill-color-light: var(--vscode-selection);
+  --el-fill-color-lighter: var(--vscode-bg);
+  --el-fill-color-extra-light: var(--vscode-input-bg);
+  --el-fill-color-dark: var(--vscode-border);
+  --el-fill-color-darker: var(--vscode-border);
+
+  // Text colors
+  --el-text-color-primary: var(--vscode-fore-text);
+  --el-text-color-regular: var(--vscode-fore-text);
+  --el-text-color-secondary: var(--vscode-fore-text-dim);
+  --el-text-color-placeholder: var(--vscode-fore-text-dim);
+  --el-text-color-disabled: var(--vscode-fore-text-dim);
+
+  // Border colors
+  --el-border-color: var(--vscode-border);
+  --el-border-color-light: var(--vscode-border);
+  --el-border-color-lighter: var(--vscode-border);
+  --el-border-color-extra-light: var(--vscode-border);
+  --el-border-color-dark: var(--vscode-border);
+  --el-border-color-darker: var(--vscode-border);
+
+  // Disabled states
+  --el-disabled-bg-color: var(--vscode-input-bg);
+  --el-disabled-text-color: var(--vscode-fore-text-dim);
+  --el-disabled-border-color: var(--vscode-border);
+
+  // Mask colors
+  --el-mask-color: rgba(0, 0, 0, 0.6);
+  --el-mask-color-extra-light: rgba(0, 0, 0, 0.3);
+}
+
+// Global Reset & Typography
+// =============================================================================
+
+body {
+  background-color: var(--vscode-bg);
+  color: var(--vscode-fore-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  -webkit-font-smoothing: antialiased;
+  margin: 0;
+}
+
+// Element Plus Component Overrides
+// =============================================================================
+
+// Buttons
+.el-button {
+  background-color: var(--vscode-panel-bg);
+  border-color: var(--vscode-border);
+  color: var(--vscode-fore-text);
+  font-weight: 500;
+
+  &:hover,
+  &:focus {
+    background-color: var(--vscode-selection);
+    border-color: var(--vscode-accent-blue);
+    color: var(--vscode-fore-text);
+  }
+
+  &.el-button--primary {
+    background-color: var(--vscode-accent-blue);
+    border-color: var(--vscode-accent-blue);
+    color: #ffffff;
+
+    &:hover,
+    &:focus {
+      opacity: 0.9;
+    }
+  }
+
+  &.el-button--success {
+    background-color: var(--vscode-accent-green);
+    border-color: var(--vscode-accent-green);
+    color: #ffffff;
+  }
+
+  &.el-button--warning {
+    background-color: var(--vscode-accent-orange);
+    border-color: var(--vscode-accent-orange);
+    color: #ffffff;
+  }
+
+  &.el-button--danger {
+    background-color: var(--vscode-accent-red);
+    border-color: var(--vscode-accent-red);
+    color: #ffffff;
+  }
+}
+
+// Inputs
+.el-input__wrapper,
+.el-textarea__inner {
+  background-color: var(--vscode-input-bg) !important;
+  box-shadow: 0 0 0 1px var(--vscode-border) inset !important;
+
+  &:hover {
+    box-shadow: 0 0 0 1px var(--vscode-accent-blue) inset !important;
+  }
+
+  &.is-focus {
+    box-shadow: 0 0 0 1px var(--vscode-accent-blue) inset !important;
+  }
+}
+
+.el-input__inner {
+  color: var(--vscode-fore-text);
+
+  &::placeholder {
+    color: var(--vscode-fore-text-dim);
+  }
+}
+
+// Select
+.el-select {
+  .el-input__wrapper {
+    background-color: var(--vscode-input-bg) !important;
+  }
+}
+
+.el-select-dropdown {
+  background-color: var(--vscode-panel-bg);
+  border: 1px solid var(--vscode-border);
+
+  .el-select-dropdown__item {
+    color: var(--vscode-fore-text);
+
+    &:hover,
+    &.hover {
+      background-color: var(--vscode-selection);
+    }
+
+    &.selected {
+      color: var(--vscode-accent-blue);
+    }
+  }
+}
+
+// Tables
+.el-table {
+  background-color: var(--vscode-panel-bg);
+  color: var(--vscode-fore-text);
+  --el-table-header-bg-color: var(--vscode-bg);
+  --el-table-row-hover-bg-color: var(--vscode-selection);
+  --el-table-border-color: var(--vscode-border);
+  --el-table-tr-bg-color: var(--vscode-panel-bg);
+
+  th.el-table__cell {
+    background-color: var(--vscode-bg);
+    color: var(--vscode-fore-text-dim);
+    font-weight: 600;
+    border-bottom: 1px solid var(--vscode-border);
+  }
+
+  td.el-table__cell {
+    border-bottom: 1px solid var(--vscode-border);
+  }
+}
+
+// Tags
+.el-tag {
+  border: none;
+
+  &.el-tag--success {
+    background-color: rgba(60, 120, 60, 0.2);
+    color: #6aba6a;
+  }
+
+  &.el-tag--warning {
+    background-color: rgba(200, 140, 50, 0.2);
+    color: #e6b464;
+  }
+
+  &.el-tag--danger {
+    background-color: rgba(205, 70, 70, 0.2);
+    color: #f07070;
+  }
+
+  &.el-tag--info {
+    background-color: rgba(150, 150, 150, 0.2);
+    color: #b0b0b0;
+  }
+}
+
+// Progress
+.el-progress-bar__outer {
+  background-color: var(--vscode-input-bg);
+}
+
+// Dialogs
+.el-dialog {
+  background-color: var(--vscode-panel-bg);
+  border: 1px solid var(--vscode-border);
+
+  .el-dialog__title {
+    color: var(--vscode-fore-text);
+  }
+
+  .el-dialog__body {
+    color: var(--vscode-fore-text);
+  }
+}
+
+// Utility Classes
+// =============================================================================
+
+.text-accent-blue {
+  color: var(--vscode-accent-blue);
+}
+.text-accent-green {
+  color: var(--vscode-accent-green);
+}
+.text-accent-orange {
+  color: var(--vscode-accent-orange);
+}
+.text-accent-red {
+  color: var(--vscode-accent-red);
+}
+.text-dim {
+  color: var(--vscode-fore-text-dim);
+}
+
+.bg-panel {
+  background-color: var(--vscode-panel-bg);
+}
+.bg-input {
+  background-color: var(--vscode-input-bg);
+}
+
+// Custom Scrollbar (VS Code Style)
+// =============================================================================
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--vscode-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #424242;
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4f4f4f;
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--vscode-bg);
+}

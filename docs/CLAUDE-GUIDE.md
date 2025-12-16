@@ -178,9 +178,19 @@ Wave 3:  [TASK-04 最后任务]
 
 | 文件 | 路径 |
 |------|------|
-| 调度器主程序 | `tools/auto-dev-scheduler/auto-dev-scheduler.ps1` |
-| 启动脚本 | `tools/auto-dev-scheduler/run.bat` |
+| 调度器程序 | `tools/auto-dev-scheduler-web/` (Electron 应用) |
+| 调度器使用说明 | `tools/auto-dev-scheduler-web/自动调度器使用说明.md` |
 | /auto-dev 命令 | `.claude/commands/auto-dev.md` |
 | 任务文件（核心） | `openspec/execution/{项目}/AUTO-DEV.md` |
 | 项目配置 | `openspec/project.md` |
 | AI 代理指南 | `openspec/AGENTS.md` |
+
+### 启动调度器
+
+```bash
+cd tools/auto-dev-scheduler-web
+npm install   # 首次运行
+npm run dev   # 开发模式启动
+```
+
+或使用打包后的安装程序：`release/Auto-Dev-Scheduler-Setup-1.0.0.exe`

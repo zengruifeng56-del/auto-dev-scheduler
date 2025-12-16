@@ -75,9 +75,13 @@ your-project/
 │   └── commands/
 │       └── auto-dev.md               # /auto-dev 命令定义
 └── tools/
-    └── auto-dev-scheduler/
-        ├── auto-dev-scheduler.ps1    # 调度器主程序
-        └── run.bat                   # 启动脚本
+    └── auto-dev-scheduler-web/       # Electron 调度器应用
+        ├── src/
+        │   ├── main/                 # 主进程（调度核心、Worker管理）
+        │   ├── renderer/             # 渲染进程（Vue 3 UI）
+        │   └── shared/               # 共享类型定义
+        ├── package.json
+        └── 自动调度器使用说明.md
 ```
 
 ## 快速安装（Windows）
@@ -265,7 +269,8 @@ Claude 会：
 
 ## 系统要求
 
-- **操作系统**：Windows（PowerShell 5.1+）
+- **操作系统**：Windows（需要 Node.js 18+）
+- **Node.js**：18.x 或更高版本
 - **Claude Code**：已安装并配置 CLI
 - **Git**：用于分布式锁和版本控制
 - **网络**：在线安装需要访问 GitHub
@@ -286,29 +291,41 @@ Claude 会：
 
 ### Q: 支持 Mac/Linux 吗？
 
-调度器 GUI 目前仅支持 Windows。/auto-dev 命令本身跨平台可用。
+Electron 版本理论上支持跨平台，但目前仅在 Windows 上测试。/auto-dev 命令本身跨平台可用。
 
 ## 更新日志
 
-### v0.6.1 (2024-12)
+### v1.0.0 (2024-12) - Electron 版本
+
+**重大升级**
+
+- 从 PowerShell 迁移到 Electron + Vue 3 架构
+- 技术栈：Electron 28 + Vue 3.4 + TypeScript + Element Plus + Pinia
 
 **新功能**
 
-- 命令行参数支持：`-AutoDevFile` 参数可指定启动时自动加载的文件
-- 耗时统计：显示运行中和已完成任务的耗时
-
-**Bug 修复**
-
-- 修复依赖解析问题：括号内注释（如 `可与 XX 并行`）不再被误识别为依赖
-- 修复耗时显示超过 1 小时回卷的问题（现在正确显示 `hh:mm:ss`）
-- 增强 TaskId 识别：支持从 git commit、Edit 操作、多种文本格式中识别
+- **Watchdog 健康监控**：双层诊断机制（规则诊断 + AI 诊断）
+  - 进程存活检测
+  - 活动超时检测（可配置）
+  - 慢操作工具超时（codex/gemini/npm 等）
+  - 自动恢复机制
+- **断点续传**：任务日志持久化，中断后可恢复上下文
+- **交付检查**：任务完成后自动对比 tasks.md 检查清单
+- **设置对话框**：可配置各类超时阈值和日志保留天数
 
 **改进**
 
-- 依赖支持 `None` 作为空依赖标记（兼容英文项目）
-- 支持文件末尾无换行的情况
+- VS Code Dark 风格深色主题
+- 更流畅的实时日志显示
+- 改进的任务状态可视化
 
-### v0.6.0
+### v0.6.1 (旧版 PowerShell)
+
+- 命令行参数支持
+- 耗时统计
+- 依赖解析改进
+
+### v0.6.0 (旧版 PowerShell)
 
 - 初始版本
 - 深色主题 GUI

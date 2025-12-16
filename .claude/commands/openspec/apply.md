@@ -29,12 +29,21 @@ ls openspec/execution/
 
 ## Step 2: 启动 Auto-Dev Scheduler
 
-找到 AUTO-DEV.md 后，执行调度器并传入文件路径：
+找到 AUTO-DEV.md 后，启动 Electron 调度器应用：
 
+**方式一：开发模式启动**
 ```bash
-# 启动调度器（使用项目根目录的相对路径）
-start "" "tools\auto-dev-scheduler\run.bat" "{AUTO-DEV.md完整路径}"
+cd tools/auto-dev-scheduler-web
+npm run dev
 ```
+
+**方式二：使用打包安装程序**
+运行 `tools/auto-dev-scheduler-web/release/Auto-Dev-Scheduler-Setup-1.0.0.exe` 安装后启动。
+
+**加载任务文件**：
+1. 启动调度器后，点击 **选择文件** 按钮
+2. 选择 `{AUTO-DEV.md完整路径}`
+3. 任务列表会显示在表格中
 
 **注意**：调度器会自动加载任务列表，等待用户点击"开始"按钮。
 

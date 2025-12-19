@@ -1,5 +1,5 @@
 /**
- * Preload Script
+ * Preload Script - 简化版
  * 预加载脚本 - 通过 contextBridge 暴露安全的 IPC API 给渲染进程
  */
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
@@ -12,7 +12,6 @@ import type {
   IpcSchedulerStatePayload,
   IpcWorkerStatePayload,
   IpcFullStatePayload,
-  IpcDeliveryCheckPayload,
   IpcWorkerHealthWarningPayload,
   WatchdogConfigPayload,
 } from '../shared/electron-api.d';
@@ -65,9 +64,6 @@ const electronAPI: ElectronAPI = {
   // ==========================================================================
   exportLogs: () => ipcRenderer.invoke(IPC_CHANNELS.LOGS_EXPORT),
 
-  getRecoveryContext: (taskId: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.LOGS_GET_RECOVERY_CONTEXT, { taskId }),
-
   clearTaskLogs: (taskId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.LOGS_CLEAR_TASK_LOGS, { taskId }),
 
@@ -105,9 +101,6 @@ const electronAPI: ElectronAPI = {
 
   onWorkerHealthWarning: (callback: (payload: IpcWorkerHealthWarningPayload) => void) =>
     createEventSubscription(IPC_CHANNELS.EVENT_WORKER_HEALTH_WARNING, callback),
-
-  onDeliveryCheck: (callback: (payload: IpcDeliveryCheckPayload) => void) =>
-    createEventSubscription(IPC_CHANNELS.EVENT_DELIVERY_CHECK, callback),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

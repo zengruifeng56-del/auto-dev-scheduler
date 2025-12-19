@@ -82,6 +82,7 @@ const saveConfig = async () => {
 
 const openDialog = () => {
   visible.value = true;
+  // loadConfig() will be called by watch(visible) - no need to call twice
 };
 
 watch(visible, (v) => {
@@ -128,7 +129,7 @@ watch(visible, (v) => {
 
       <el-divider content-position="left">慢操作超时阈值</el-divider>
 
-      <el-form-item label="Codex">
+      <el-form-item label="Codex/Gemini">
         <el-input-number
           v-model="codexTimeoutMinutes"
           :min="10"
@@ -138,14 +139,17 @@ watch(visible, (v) => {
         <span class="unit">分钟</span>
       </el-form-item>
 
-      <el-form-item label="Gemini">
+      <el-form-item>
+        <template #label>
+          <span style="visibility: hidden">Gemini</span>
+        </template>
         <el-input-number
           v-model="geminiTimeoutMinutes"
           :min="10"
           :max="180"
           :step="5"
         />
-        <span class="unit">分钟</span>
+        <span class="unit">分钟 (Gemini)</span>
       </el-form-item>
 
       <el-form-item label="npm install">

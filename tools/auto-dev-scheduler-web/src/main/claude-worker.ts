@@ -4,6 +4,7 @@ import { createInterface, type Interface as ReadlineInterface } from 'node:readl
 
 import treeKill from 'tree-kill';
 
+import { TASK_ID_PATTERN } from '../shared/task-id';
 import type { LogEntry, LogEntryType } from '../shared/types';
 
 // ============================================================================
@@ -68,7 +69,7 @@ function formatToolName(name: string): string {
 // TaskId Detection
 // ============================================================================
 
-const TASK_ID_PATTERN = '[A-Z]+-[A-Z0-9-]*\\d[A-Z0-9-]*';
+// Use unified Task ID pattern from shared module
 const TASK_ID_REGEXES: RegExp[] = [
   new RegExp(`\\bTask:\\s*(${TASK_ID_PATTERN})\\b`, 'i'),
   new RegExp(`\\bTask\\s+(${TASK_ID_PATTERN})\\b`, 'i'),
@@ -91,31 +92,46 @@ function extractTaskId(text: string): string | null {
 // Configuration Types
 // ============================================================================
 
-export type WatchdogConfig =
-  | { enabled: false }
-  | { enabled: true; idleTimeoutMs: number; hardTimeoutMs?: number; tickMs: number };
+export interface SlowToolTimeouts {
+  codex: number;
+  gemini: number;
+  npmInstall: number;
+  npmBuild: number;
+  default: number;
+}
+
+export interface WatchdogConfig {
+  enabled: boolean;
+  idleTimeoutMs: number;
+  hardTimeoutMs?: number;
+  tickMs: number;
+  slowToolTimeouts: SlowToolTimeouts;
+}
 
 export interface ClaudeWorkerConfig {
   workerId?: number;
-  watchdog?: WatchdogConfig;
-  startupMessage?: string | object | null;
-  assignedTaskId?: string | null;
+  /** Pre-assigned task ID from scheduler (for /auto-dev --task mode) */
+  assignedTaskId?: string;
+  watchdog?: Partial<WatchdogConfig> & { slowToolTimeouts?: Partial<SlowToolTimeouts> };
+  startupMessage?: object | null;
   autoKillOnComplete?: boolean;
 }
 
-// Helper to convert startupMessage to the expected format
-function toStartupMessage(value: ClaudeWorkerConfig['startupMessage']): object | null {
-  if (value === undefined) {
-    return { type: 'user', message: { role: 'user', content: '/auto-dev' } };
-  }
-  if (value === null) return null;
-  if (typeof value === 'string') {
-    const content = value.trim();
-    if (!content) return null;
-    return { type: 'user', message: { role: 'user', content } };
-  }
-  return value;
-}
+const DEFAULT_SLOW_TOOL_TIMEOUTS: SlowToolTimeouts = {
+  codex: 60 * 60_000,      // 60 分钟
+  gemini: 60 * 60_000,     // 60 分钟
+  npmInstall: 15 * 60_000, // 15 分钟
+  npmBuild: 20 * 60_000,   // 20 分钟
+  default: 10 * 60_000     // 10 分钟
+};
+
+const DEFAULT_WATCHDOG: WatchdogConfig = {
+  enabled: true,
+  idleTimeoutMs: 5 * 60_000,
+  hardTimeoutMs: undefined,
+  tickMs: 1_000,
+  slowToolTimeouts: DEFAULT_SLOW_TOOL_TIMEOUTS
+};
 
 // ============================================================================
 // ClaudeWorker Class
@@ -133,12 +149,15 @@ export class ClaudeWorker extends EventEmitter {
   private completed = false;
   private killing = false;
 
-  private readonly assignedTaskId: string | null;
   private taskId: string | null = null;
   private tokenUsage: string | null = null;
   private currentTool: string | null = null;
+  private currentSlowToolCategory: keyof SlowToolTimeouts | null = null;
+  private slowToolStartMs: number | null = null;
 
   readonly workerId?: number;
+  /** Pre-assigned task ID from scheduler */
+  readonly assignedTaskId?: string;
   private readonly watchdog: WatchdogConfig;
   private readonly startupMessage: object | null;
   private readonly autoKillOnComplete: boolean;
@@ -146,15 +165,24 @@ export class ClaudeWorker extends EventEmitter {
   constructor(config: ClaudeWorkerConfig = {}) {
     super();
     this.workerId = config.workerId;
-    // Default watchdog to disabled - external Watchdog class handles timeouts
-    this.watchdog = config.watchdog ?? { enabled: false };
-    this.startupMessage = toStartupMessage(config.startupMessage);
+    this.assignedTaskId = config.assignedTaskId;
+    this.watchdog = {
+      ...DEFAULT_WATCHDOG,
+      ...config.watchdog,
+      slowToolTimeouts: {
+        ...DEFAULT_SLOW_TOOL_TIMEOUTS,
+        ...(config.watchdog?.slowToolTimeouts ?? {})
+      }
+    };
+    this.startupMessage = config.startupMessage === undefined
+      ? { type: 'user', message: { role: 'user', content: '/auto-dev' } }
+      : config.startupMessage;
     this.autoKillOnComplete = config.autoKillOnComplete ?? true;
 
-    // Scheduler assigns task up-front
-    const rawTaskId = config.assignedTaskId;
-    this.assignedTaskId = typeof rawTaskId === 'string' ? rawTaskId.trim() || null : null;
-    this.taskId = this.assignedTaskId;
+    // If task is pre-assigned, set it immediately so scheduler can track
+    if (this.assignedTaskId) {
+      this.taskId = this.assignedTaskId;
+    }
   }
 
   // --------------------------------------------------------------------------
@@ -280,9 +308,11 @@ export class ClaudeWorker extends EventEmitter {
   private reset(): void {
     this.completed = false;
     this.killing = false;
-    this.taskId = this.assignedTaskId; // Preserve assigned task ID on reset
+    this.taskId = null;
     this.tokenUsage = null;
     this.currentTool = null;
+    this.currentSlowToolCategory = null;
+    this.slowToolStartMs = null;
   }
 
   private setupEventHandlers(child: ChildProcessWithoutNullStreams): void {
@@ -427,7 +457,17 @@ export class ClaudeWorker extends EventEmitter {
     const detail = input ? this.summarizeToolInput(input) : undefined;
     const displayName = formatToolName(toolName);
 
-    this.emitLog('tool', detail ? `${displayName} → ${detail}` : displayName);
+    // All tool calls use slow tool timeout to prevent premature idle kills
+    const slowCategory = this.inferSlowToolCategory(toolName, detail);
+    this.currentSlowToolCategory = slowCategory;
+    this.slowToolStartMs = Date.now();
+    const timeoutMin = Math.round(this.watchdog.slowToolTimeouts[slowCategory] / 60_000);
+    // Only log timeout info for non-default categories
+    if (slowCategory !== 'default') {
+      this.emitLog('tool', `${displayName} → ${detail ?? ''} (slow tool: ${slowCategory}, timeout: ${timeoutMin}min)`);
+    } else {
+      this.emitLog('tool', detail ? `${displayName} → ${detail}` : displayName);
+    }
 
     if (input) {
       const command = asString(input.command);
@@ -441,6 +481,18 @@ export class ClaudeWorker extends EventEmitter {
     }
   }
 
+  private inferSlowToolCategory(toolName: string, detail?: string): keyof SlowToolTimeouts {
+    const raw = `${toolName} ${detail ?? ''}`.toLowerCase();
+
+    if (raw.includes('codex')) return 'codex';
+    if (raw.includes('gemini')) return 'gemini';
+    if (raw.includes('npm') && raw.includes('install')) return 'npmInstall';
+    if (raw.includes('npm') && (raw.includes('build') || raw.includes('run build'))) return 'npmBuild';
+
+    // Use 'default' timeout for all other tools to prevent premature idle kills
+    return 'default';
+  }
+
   private handleUserMessage(obj: JsonObject): void {
     const message = obj.message;
     if (!isRecord(message)) return;
@@ -451,7 +503,16 @@ export class ClaudeWorker extends EventEmitter {
     for (const block of content) {
       if (!isRecord(block) || asString(block.type) !== 'tool_result') continue;
 
+      // Clear slow tool state on tool result
+      if (this.currentSlowToolCategory) {
+        const elapsed = this.slowToolStartMs ? Date.now() - this.slowToolStartMs : 0;
+        const elapsedMin = Math.round(elapsed / 60_000);
+        this.emitLog('system', `Slow tool ${this.currentSlowToolCategory} completed (${elapsedMin}min)`);
+      }
       this.currentTool = null;
+      this.currentSlowToolCategory = null;
+      this.slowToolStartMs = null;
+
       const isError = Boolean(block.is_error);
       const rawContent = block.content;
 
@@ -537,20 +598,11 @@ export class ClaudeWorker extends EventEmitter {
   // --------------------------------------------------------------------------
 
   private detectTaskId(text: string): void {
+    // 调度器模式：已预分配任务时跳过检测，避免误匹配代码片段（如 Math.floor）
+    if (this.assignedTaskId) return;
+
     const id = extractTaskId(text);
-    if (!id) return;
-
-    // #4 Fix: If scheduler assigned a task, only warn if detected ID differs (don't update taskId)
-    if (this.assignedTaskId) {
-      if (id !== this.assignedTaskId && id !== this.taskId) {
-        this.emitLog('system', `Warning: Detected task ${id} differs from assigned ${this.assignedTaskId}`);
-        this.emit('taskDetected', id); // Emit for logging purposes only
-      }
-      return;
-    }
-
-    // Legacy behavior for non-assigned mode
-    if (id !== this.taskId) {
+    if (id && id !== this.taskId) {
       this.taskId = id;
       this.emitLog('system', `Task detected: ${id}`);
       this.emit('taskDetected', id);
@@ -567,34 +619,51 @@ export class ClaudeWorker extends EventEmitter {
 
   private startWatchdog(): void {
     this.stopWatchdog();
-    if (!this.watchdog.enabled) return;
+    if (!this.watchdog.enabled || this.watchdog.tickMs <= 0) return;
 
-    const tickMs = this.watchdog.tickMs;
-    if (!Number.isFinite(tickMs) || tickMs <= 0) return;
-
-    this.watchdogTimer = setInterval(() => this.checkWatchdog(), tickMs);
+    this.watchdogTimer = setInterval(() => this.checkWatchdog(), this.watchdog.tickMs);
     this.watchdogTimer.unref?.();
   }
 
   private checkWatchdog(): void {
     if (!this.process || this.completed) return;
-    if (!this.watchdog.enabled) return;
 
     const now = Date.now();
     const idleMs = now - this.lastActivityMs;
     const totalMs = now - this.startMs;
 
-    if (idleMs > this.watchdog.idleTimeoutMs) {
-      const err = new Error(`Timeout: ${Math.round(idleMs / 1000)}s idle`);
-      this.emitLog('error', err.message);
-      this.emitErrorSafe(err);
-      void this.kill();
-      this.finalize(false);
-      return;
+    // Check slow tool timeout OR idle timeout (mutually exclusive)
+    if (this.currentSlowToolCategory && this.slowToolStartMs) {
+      // Use slow tool timeout instead of idle timeout
+      const effectiveTimeoutMs = this.watchdog.slowToolTimeouts[this.currentSlowToolCategory];
+      const slowToolElapsed = now - this.slowToolStartMs;
+
+      if (slowToolElapsed > effectiveTimeoutMs) {
+        const timeoutMin = Math.round(effectiveTimeoutMs / 60_000);
+        const elapsedMin = Math.round(slowToolElapsed / 60_000);
+        const err = new Error(`Timeout: slow tool ${this.currentSlowToolCategory} exceeded ${timeoutMin}min (elapsed: ${elapsedMin}min)`);
+        this.emitLog('error', err.message);
+        this.emitErrorSafe(err);
+        void this.kill();
+        this.finalize(false);
+        return;
+      }
+      // Slow tool is still within timeout, skip idle check but continue to hardTimeout check
+    } else {
+      // Normal idle timeout check (only when not waiting for slow tool)
+      if (idleMs > this.watchdog.idleTimeoutMs) {
+        const err = new Error(`Timeout: ${Math.round(idleMs / 1000)}s idle`);
+        this.emitLog('error', err.message);
+        this.emitErrorSafe(err);
+        void this.kill();
+        this.finalize(false);
+        return;
+      }
     }
 
+    // Hard timeout check: ALWAYS executed regardless of slow tool state
     if (this.watchdog.hardTimeoutMs !== undefined && totalMs > this.watchdog.hardTimeoutMs) {
-      const err = new Error(`Timeout: ${Math.round(totalMs / 1000)}s total`);
+      const err = new Error(`Timeout: ${Math.round(totalMs / 1000)}s total (hard limit)`);
       this.emitLog('error', err.message);
       this.emitErrorSafe(err);
       void this.kill();

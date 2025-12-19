@@ -1,6 +1,6 @@
 /**
- * IPC Handlers
- * 主进程 IPC 处理器 - 将渲染进程命令映射到 Scheduler，并将事件转发到渲染进程
+ * IPC Handlers - 简化版
+ * 主进程 IPC 处理器 - 将渲染进程命令映射到 Scheduler
  */
 import { BrowserWindow, dialog, ipcMain, type WebContents } from 'electron';
 import path from 'node:path';
@@ -75,10 +75,6 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions): void {
 
   scheduler.on('workerState', (msg) => {
     broadcast(getWebContents, IPC_CHANNELS.EVENT_WORKER_STATE, msg.payload);
-  });
-
-  scheduler.on('deliveryCheck', (msg) => {
-    broadcast(getWebContents, IPC_CHANNELS.EVENT_DELIVERY_CHECK, msg.payload);
   });
 
   // --------------------------------------------------------------------------
@@ -156,12 +152,6 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions): void {
 
   ipcMain.handle(IPC_CHANNELS.LOGS_EXPORT, async () => {
     return scheduler.exportLogs();
-  });
-
-  ipcMain.handle(IPC_CHANNELS.LOGS_GET_RECOVERY_CONTEXT, async (_event, args: { taskId?: unknown } | undefined) => {
-    const taskId = typeof args?.taskId === 'string' ? args.taskId.trim() : '';
-    if (!taskId) throw new Error('logs:getRecoveryContext: taskId cannot be empty');
-    return scheduler.getRecoveryContext(taskId);
   });
 
   ipcMain.handle(IPC_CHANNELS.LOGS_CLEAR_TASK_LOGS, async (_event, args: { taskId?: unknown } | undefined) => {

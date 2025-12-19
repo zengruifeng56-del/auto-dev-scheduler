@@ -1,5 +1,5 @@
 /**
- * Electron API Type Definitions
+ * Electron API Type Definitions - 简化版
  * 定义渲染进程可用的 electronAPI 接口
  */
 import type {
@@ -7,9 +7,7 @@ import type {
   TaskStatus,
   LogEntry,
   Progress,
-  RecoveryContext,
   SchedulerFullState,
-  DeliveryReport,
 } from './types';
 
 // =============================================================================
@@ -44,6 +42,7 @@ export interface IpcSchedulerStatePayload {
 
 export interface IpcWorkerStatePayload {
   workerId: number;
+  active: boolean;
   taskId?: string;
   tokenUsage?: string;
   currentTool?: string;
@@ -51,13 +50,10 @@ export interface IpcWorkerStatePayload {
 
 export interface IpcFullStatePayload extends SchedulerFullState {}
 
-export interface IpcDeliveryCheckPayload extends DeliveryReport {}
-
 export interface IpcWorkerHealthWarningPayload {
   workerId: string;
   taskId: string | null;
   lastActivity: number;
-  idleMs: number;
   reason: string;
 }
 
@@ -95,7 +91,6 @@ export interface ElectronAPI {
 
   // Logs
   exportLogs: () => Promise<string>;
-  getRecoveryContext: (taskId: string) => Promise<RecoveryContext | null>;
   clearTaskLogs: (taskId: string) => Promise<void>;
 
   // Watchdog Config
@@ -111,7 +106,6 @@ export interface ElectronAPI {
   onWorkerStateChange: (callback: (payload: IpcWorkerStatePayload) => void) => () => void;
   onFullState: (callback: (payload: IpcFullStatePayload) => void) => () => void;
   onWorkerHealthWarning: (callback: (payload: IpcWorkerHealthWarningPayload) => void) => () => void;
-  onDeliveryCheck: (callback: (payload: IpcDeliveryCheckPayload) => void) => () => void;
 }
 
 // =============================================================================

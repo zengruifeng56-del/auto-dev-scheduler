@@ -4,7 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useSchedulerStore } from '../stores/scheduler'
 
 const store = useSchedulerStore()
-const { running, paused, lastError, progress, activeWorkers, deliveryReport } = storeToRefs(store)
+const { running, paused, lastError, progress, activeWorkers } = storeToRefs(store)
 
 // Derived: all tasks completed
 const isAllComplete = computed(() => {
@@ -14,17 +14,7 @@ const isAllComplete = computed(() => {
 // Status text
 const statusText = computed(() => {
   if (lastError.value) return `错误: ${lastError.value}`
-  if (isAllComplete.value) {
-    if (!deliveryReport.value) return '全部任务完成！'
-    // Show notes if present (e.g., "tasks.md not found", "no OpenSpec link")
-    if (deliveryReport.value.notes?.length) {
-      return `全部任务完成（${deliveryReport.value.notes[0]}）`
-    }
-    if (deliveryReport.value.status === 'pass') {
-      return `全部任务完成（交付检查通过：${deliveryReport.value.covered}/${deliveryReport.value.total}）`
-    }
-    return `全部任务完成（交付检查警告：${deliveryReport.value.uncovered.length} 项未覆盖）`
-  }
+  if (isAllComplete.value) return '全部任务完成！'
   if (paused.value) return '已暂停'
   if (running.value) return '正在运行'
   return '就绪'
@@ -33,12 +23,7 @@ const statusText = computed(() => {
 // Status color (using theme variables with fallbacks)
 const statusColor = computed(() => {
   if (lastError.value) return 'var(--vscode-accent-red, #cd4646)'
-  if (isAllComplete.value) {
-    if (!deliveryReport.value) return 'var(--vscode-accent-green, #3c783c)'
-    return deliveryReport.value.status === 'pass'
-      ? 'var(--vscode-accent-green, #3c783c)'
-      : 'var(--vscode-accent-orange, #c88c32)'
-  }
+  if (isAllComplete.value) return 'var(--vscode-accent-green, #3c783c)'
   if (paused.value) return 'var(--vscode-accent-orange, #c88c32)'
   if (running.value) return 'var(--vscode-accent-blue, #007acc)'
   return 'var(--vscode-fore-text-dim, #969696)'

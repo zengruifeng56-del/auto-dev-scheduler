@@ -5,7 +5,6 @@ import type {
   WorkerState,
   Progress,
   ServerMessage,
-  DeliveryReport,
 } from '@shared/types';
 
 let ipcUnsubscribers: Array<() => void> = [];
@@ -19,9 +18,6 @@ export const useSchedulerStore = defineStore('scheduler', {
     // File state
     filePath: '',
     projectRoot: '',
-
-    // Delivery check state
-    deliveryReport: null as DeliveryReport | null,
 
     // Scheduler state
     running: false,
@@ -100,9 +96,6 @@ export const useSchedulerStore = defineStore('scheduler', {
         }),
         api.onFullState((payload) => {
           this.handleServerMessage({ type: 'fullState', payload });
-        }),
-        api.onDeliveryCheck((payload) => {
-          this.handleServerMessage({ type: 'deliveryCheck', payload });
         })
       ];
 
@@ -131,11 +124,7 @@ export const useSchedulerStore = defineStore('scheduler', {
     handleServerMessage(msg: ServerMessage) {
       switch (msg.type) {
         case 'hello':
-          // Server connected (not used in IPC mode)
-          break;
-
         case 'pong':
-          // Ping response (not used in IPC mode)
           break;
 
         case 'error':
@@ -146,7 +135,6 @@ export const useSchedulerStore = defineStore('scheduler', {
           this.filePath = msg.payload.filePath;
           this.projectRoot = msg.payload.projectRoot;
           this.tasks = msg.payload.tasks;
-          this.deliveryReport = null; // Reset delivery report when loading new file
           this.progress = { completed: 0, total: msg.payload.tasks.length };
           break;
 
@@ -191,11 +179,12 @@ export const useSchedulerStore = defineStore('scheduler', {
             if (!worker) {
               worker = {
                 id: msg.payload.workerId,
-                active: true,
+                active: msg.payload.active ?? true,
                 logs: []
               };
               this.workers.set(msg.payload.workerId, worker);
             }
+            worker.active = msg.payload.active ?? worker.active;
             worker.taskId = msg.payload.taskId;
             worker.tokenUsage = msg.payload.tokenUsage;
             worker.currentTool = msg.payload.currentTool;
@@ -218,7 +207,6 @@ export const useSchedulerStore = defineStore('scheduler', {
           this.projectRoot = msg.payload.projectRoot;
           this.tasks = msg.payload.tasks;
           this.progress = msg.payload.progress;
-          // Clear and rebuild workers map to avoid stale entries
           this.workers.clear();
           for (const ws of msg.payload.workers) {
             this.workers.set(ws.id, ws);
@@ -227,10 +215,6 @@ export const useSchedulerStore = defineStore('scheduler', {
 
         case 'exportLogsResponse':
           this.downloadLogsContent(msg.payload.content);
-          break;
-
-        case 'deliveryCheck':
-          this.deliveryReport = msg.payload;
           break;
       }
     },

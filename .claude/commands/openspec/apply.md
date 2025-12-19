@@ -1,11 +1,11 @@
 ---
 name: OpenSpec: Apply
-description: Implement an approved OpenSpec change and keep tasks in sync.
+description: 执行已批准的 OpenSpec 变更并同步任务状态
 category: OpenSpec
 tags: [openspec, apply]
 ---
 
-# OpenSpec Apply - 执行并发任务
+# OpenSpec Apply - 自动执行并发任务
 
 你收到了用户指令：执行 OpenSpec 变更 `$ARGUMENTS`
 
@@ -76,7 +76,24 @@ npm run dev
 
 ---
 
+## 使用说明
+
+{根据项目内容，说明如何配置和使用}
+
+### 环境配置
+
+{需要的环境变量、依赖项}
+
+### 启动步骤
+
+{如何启动和运行}
+
+---
+
 ## 测试指南
+
+### 构建验证
+{构建命令和预期结果}
 
 ### 功能测试
 {核心功能的测试步骤}
@@ -86,12 +103,39 @@ npm run dev
 
 ---
 
-## 下一步
+## 归档流程
 
-测试通过后，执行归档：
-```
-/openspec:archive {change-id}
-```
+确认测试通过后，执行以下步骤归档：
+
+1. **运行归档命令**：
+   ```bash
+   /openspec:archive {change-id}
+   ```
+
+2. **归档操作包含**：
+   - 移动 `openspec/changes/{change-id}/` → `openspec/changes/archive/{日期}-{change-id}/`
+   - 更新 `openspec/specs/` 规格文档（如有变更）
+   - 更新 `openspec/execution/README.md` 索引
+
+3. **提交归档 PR**：
+   ```bash
+   git add openspec/
+   git commit -m "archive: 归档 {change-id} OpenSpec 变更"
+   git push
+   ```
+
+---
+
+## 附录
+
+### 相关文档
+- [proposal.md](../../changes/{change-id}/proposal.md)
+- [design.md](../../changes/{change-id}/design.md)
+- [tasks.md](../../changes/{change-id}/tasks.md)
+- [AUTO-DEV.md](./AUTO-DEV.md)
+
+### 变更时间线
+{从 git log 或 AUTO-DEV.md 提取执行时间线}
 ```
 
 ---

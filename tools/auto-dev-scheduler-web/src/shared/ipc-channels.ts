@@ -21,7 +21,6 @@ export const IPC_CHANNELS = {
 
   // Logs
   LOGS_EXPORT: 'logs:export',
-  LOGS_GET_RECOVERY_CONTEXT: 'logs:getRecoveryContext',
   LOGS_CLEAR_TASK_LOGS: 'logs:clearTaskLogs',
 
   // Watchdog Config (Renderer → Main)
@@ -37,7 +36,6 @@ export const IPC_CHANNELS = {
   EVENT_WORKER_STATE: 'worker:stateChange',
   EVENT_FULL_STATE: 'scheduler:fullState',
   EVENT_WORKER_HEALTH_WARNING: 'worker:healthWarning',
-  EVENT_DELIVERY_CHECK: 'scheduler:deliveryCheck',
 } as const;
 
 export type IpcChannels = typeof IPC_CHANNELS;

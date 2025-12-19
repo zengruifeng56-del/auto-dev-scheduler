@@ -21,27 +21,6 @@ export interface Task {
   workerId?: number;       // Assigned worker ID
 }
 
-// ============================================================
-// Delivery Check (交付检查)
-// ============================================================
-
-export interface ChecklistItem {
-  checked: boolean;
-  text: string;
-  line: number; // Line number in tasks.md (1-based)
-}
-
-export interface DeliveryReport {
-  status: 'pass' | 'warning';
-  total: number;
-  covered: number;
-  uncovered: ChecklistItem[];
-  generatedAt: string; // ISO timestamp
-  changeId?: string;
-  tasksPath?: string;
-  notes?: string[];
-}
-
 // Log entry type enumeration
 export type LogEntryType =
   | 'start'      // Process start
@@ -86,7 +65,7 @@ export interface SchedulerFullState {
 }
 
 // ============================================================
-// WebSocket Protocol - Server → Client Messages
+// Server → Client Messages
 // ============================================================
 
 export interface TaskUpdateMessage {
@@ -125,6 +104,7 @@ export interface WorkerStateMessage {
   type: 'workerState';
   payload: {
     workerId: number;
+    active?: boolean;
     taskId?: string;
     tokenUsage?: string;
     currentTool?: string;
@@ -168,11 +148,6 @@ export interface ExportLogsResponseMessage {
   };
 }
 
-export interface DeliveryCheckMessage {
-  type: 'deliveryCheck';
-  payload: DeliveryReport;
-}
-
 export type ServerMessage =
   | TaskUpdateMessage
   | WorkerLogMessage
@@ -184,11 +159,10 @@ export type ServerMessage =
   | PongMessage
   | ErrorMessage
   | FileLoadedMessage
-  | ExportLogsResponseMessage
-  | DeliveryCheckMessage;
+  | ExportLogsResponseMessage;
 
 // ============================================================
-// WebSocket Protocol - Client → Server Messages
+// Client → Server Messages
 // ============================================================
 
 export interface LoadFileMessage {
@@ -251,25 +225,3 @@ export type ClientMessage =
   | KillWorkerMessage
   | ExportLogsMessage
   | PingMessage;
-
-// ============================================================
-// Recovery / Checkpoint
-// ============================================================
-
-export type TaskLogRunStatus = 'completed' | 'interrupted';
-
-export interface RecoveryCheckpoint {
-  completedSteps: string[];
-  nextStep: string;
-}
-
-export interface RecoveryContext {
-  taskId: string;
-  logDir: string;
-  logFile: string;
-  logFilePath: string;
-  startTime: string;
-  endTime: string | null;
-  status: TaskLogRunStatus;
-  checkpoint: RecoveryCheckpoint;
-}

@@ -1,5 +1,5 @@
 /**
- * Electron Main Process Entry
+ * Electron Main Process Entry - 简化版
  * Auto-Dev Scheduler 主进程入口
  */
 import { app, BrowserWindow } from 'electron';
@@ -16,8 +16,6 @@ const __dirname = path.dirname(__filename);
 
 const scheduler = new Scheduler();
 const watchdog = new Watchdog({
-  operationLogPath: path.join(app.getPath('userData'), 'logs', 'watchdog-operations.log'),
-  // #3 Fix: Provide restartHandler to enable Watchdog to trigger worker restart
   restartHandler: async (worker) => {
     const workerId = Number.parseInt(worker.id, 10);
     if (Number.isFinite(workerId) && workerId > 0) {
@@ -89,40 +87,34 @@ if (!gotTheLock) {
       getWebContents: () => (mainWindow ? [mainWindow.webContents] : [])
     });
 
-    // Integrate Watchdog with Scheduler: track worker lifecycle
+    // Integrate Watchdog with Scheduler
     scheduler.on('workerState', (msg) => {
-      const { workerId, taskId } = msg.payload;
-      const state = scheduler.getState();
-      const workerState = state.workers.find(w => w.id === workerId);
+      const { workerId, taskId, active } = msg.payload;
 
-      if (workerState?.active) {
-        // Worker is active, register or update in watchdog
+      if (active) {
         watchdog.upsertWorker({
           id: String(workerId),
-          pid: null, // pid is not exposed by scheduler, but we track activity
+          pid: null,
           taskId: taskId ?? null,
-          logFile: '', // Log file path would need to be passed separately
           lastActivity: Date.now()
         });
       } else {
-        // Worker became inactive, remove from watchdog
         watchdog.removeWorker(String(workerId));
       }
     });
 
-    // Track worker log events to update activity
+    // Track worker activity
     scheduler.on('workerLog', (msg) => {
       const { workerId, entry } = msg.payload;
       watchdog.touch(String(workerId), Date.now());
 
-      // Track tool calls for Rule 3/4
+      // Track tool calls
       if (entry.type === 'tool' && entry.content) {
         const toolMatch = entry.content.match(/^([^→\s]+)/);
         const toolName = toolMatch?.[1] ?? 'unknown';
         const callId = `${workerId}-${Date.now()}`;
-        watchdog.recordToolCallStarted(String(workerId), toolName, callId, entry.content);
+        watchdog.recordToolCallStarted(String(workerId), toolName, callId);
       } else if (entry.type === 'result') {
-        // Clear pending tool calls on result
         watchdog.clearToolCalls(String(workerId));
       }
     });
@@ -130,15 +122,14 @@ if (!gotTheLock) {
     // Start watchdog monitoring
     watchdog.start();
 
-    // Listen for health warnings and broadcast to renderer
+    // Broadcast health warnings to renderer
     watchdog.on('diagnosis', (worker, result) => {
-      if (result.action === 'restart' || result.action === 'need_ai') {
+      if (result.action === 'restart') {
         if (mainWindow && !mainWindow.webContents.isDestroyed()) {
           mainWindow.webContents.send(IPC_CHANNELS.EVENT_WORKER_HEALTH_WARNING, {
             workerId: worker.id,
             taskId: worker.taskId,
             lastActivity: worker.lastActivity,
-            idleMs: result.recoveryContext?.idleMs ?? 0,
             reason: result.reason
           });
         }

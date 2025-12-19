@@ -35,33 +35,6 @@ const formatDuration = (seconds?: number): string => {
   return `${mStr}:${sStr}`
 }
 
-// Calculate wave duration: max(endTime) - min(startTime) for accurate wall-clock time
-const calcWaveDuration = (tasks: Task[]): number => {
-  const tasksWithTime = tasks.filter(t => t.startTime)
-  if (tasksWithTime.length === 0) {
-    return tasks.reduce((max, t) => Math.max(max, t.duration || 0), 0)
-  }
-
-  const times = tasksWithTime
-    .map(t => {
-      const start = new Date(t.startTime!).getTime()
-      let end = t.endTime ? new Date(t.endTime).getTime() : NaN
-      if (!Number.isFinite(end)) {
-        end = start + (t.duration || 0) * 1000
-      }
-      return { start, end }
-    })
-    .filter(t => Number.isFinite(t.start) && Number.isFinite(t.end))
-
-  if (times.length === 0) {
-    return tasks.reduce((max, t) => Math.max(max, t.duration || 0), 0)
-  }
-
-  const minStart = Math.min(...times.map(t => t.start))
-  const maxEnd = Math.max(...times.map(t => t.end))
-  return Math.max(0, Math.floor((maxEnd - minStart) / 1000))
-}
-
 // Table data with wave grouping using el-table tree structure
 interface TableRow {
   id: string
@@ -75,6 +48,37 @@ interface TableRow {
   children?: Task[]
 }
 
+// Calculate wave duration: max(endTime) - min(startTime) for accurate wall-clock time
+const calcWaveDuration = (tasks: Task[]): number => {
+  const tasksWithTime = tasks.filter(t => t.startTime)
+  if (tasksWithTime.length === 0) {
+    // Fallback to max(duration) if no startTime available
+    return tasks.reduce((max, t) => Math.max(max, t.duration || 0), 0)
+  }
+
+  const times = tasksWithTime
+    .map(t => {
+      const start = new Date(t.startTime!).getTime()
+      // If endTime exists, use it; otherwise estimate from startTime + duration
+      let end = t.endTime ? new Date(t.endTime).getTime() : NaN
+      // Fallback if end is invalid but start is valid
+      if (!Number.isFinite(end)) {
+        end = start + (t.duration || 0) * 1000
+      }
+      return { start, end }
+    })
+    .filter(t => Number.isFinite(t.start) && Number.isFinite(t.end)) // Exclude invalid dates
+
+  if (times.length === 0) {
+    // All timestamps invalid, fallback to max(duration)
+    return tasks.reduce((max, t) => Math.max(max, t.duration || 0), 0)
+  }
+
+  const minStart = Math.min(...times.map(t => t.start))
+  const maxEnd = Math.max(...times.map(t => t.end))
+  return Math.max(0, Math.floor((maxEnd - minStart) / 1000))
+}
+
 const tableData = computed<TableRow[]>(() => {
   const map = store.tasksByWave
   if (!map || map.size === 0) return []
@@ -84,7 +88,9 @@ const tableData = computed<TableRow[]>(() => {
 
   for (const wave of waves) {
     const tasks = map.get(wave) || []
+    // Sort tasks within wave by id
     const sortedTasks = [...tasks].sort((a, b) => a.id.localeCompare(b.id))
+    // Wave duration: wall-clock time from first task start to last task end
     const waveDuration = calcWaveDuration(sortedTasks)
     groups.push({
       id: `wave-${wave}`,

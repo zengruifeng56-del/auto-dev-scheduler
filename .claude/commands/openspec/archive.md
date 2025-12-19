@@ -1,99 +1,36 @@
 ---
 name: OpenSpec: Archive
-description: Archive a deployed OpenSpec change and update specs.
+description: 归档已部署的 OpenSpec 变更并更新规格文档
 category: OpenSpec
 tags: [openspec, archive]
 ---
+<!-- OPENSPEC:START -->
+**Guardrails**
+- Favor straightforward, minimal implementations first and add complexity only when it is requested or clearly required.
+- Keep changes tightly scoped to the requested outcome.
+- Refer to `openspec/AGENTS.md` (located inside the `openspec/` directory—run `ls openspec` or `openspec update` if you don't see it) if you need additional OpenSpec conventions or clarifications.
 
-# OpenSpec Archive - 归档已完成的变更
+**Steps**
+1. Determine the change ID to archive:
+   - If this prompt already includes a specific change ID (for example inside a `<ChangeId>` block populated by slash-command arguments), use that value after trimming whitespace.
+   - If the conversation references a change loosely (for example by title or summary), run `openspec list` to surface likely IDs, share the relevant candidates, and confirm which one the user intends.
+   - Otherwise, review the conversation, run `openspec list`, and ask the user which change to archive; wait for a confirmed change ID before proceeding.
+   - If you still cannot identify a single change ID, stop and tell the user you cannot archive anything yet.
+2. Validate the change ID by running `openspec list` (or `openspec show <id>`) and stop if the change is missing, already archived, or otherwise not ready to archive.
+3. Run `openspec archive <id> --yes` so the CLI moves the change and applies spec updates without prompts (use `--skip-specs` only for tooling-only work).
+4. Review the command output to confirm the target specs were updated and the change landed in `changes/archive/`.
+5. Validate with `openspec validate --strict` and inspect with `openspec show <id>` if anything looks off.
+6. **Clean up execution directory** (Auto-Dev artifacts):
+   - Scan all `openspec/execution/*/AUTO-DEV.md` files
+   - For each file, check if the header contains `源自 OpenSpec: [<change-id>]` matching the archived change ID (exact match required to avoid false positives like `add-foo` vs `add-foo-2`)
+   - If matched:
+     a. Check task statuses: if any task is NOT `✅ 已完成`, warn the user but proceed
+     b. Delete the entire `openspec/execution/<project>/` directory
+     c. Remove the corresponding row from `openspec/execution/README.md` project table (the row linking to this change-id)
+   - If `AUTO-DEV.md` is missing or malformed, skip and notify the user for manual cleanup
 
-你收到了用户指令：归档 OpenSpec 变更 `$ARGUMENTS`
-
----
-
-## Step 1: 确定要归档的变更
-
-根据参数 `$ARGUMENTS` 确定 change-id：
-
-1. 如果参数已经是 change-id，直接使用
-2. 如果不明确，列出可用的变更：
-   ```bash
-   ls openspec/changes/
-   ```
-3. 询问用户确认要归档哪个变更
-
----
-
-## Step 2: 验证变更状态
-
-检查变更是否可以归档：
-
-1. 所有任务已完成（AUTO-DEV.md 中所有任务状态为 ✅）
-2. 用户已测试验收通过
-3. 变更目录存在且未被归档
-
-```bash
-# 检查变更目录
-ls openspec/changes/{change-id}/
-```
-
----
-
-## Step 3: 执行归档
-
-### 3.1 创建归档目录
-
-```bash
-# 格式：archive/YYYY-MM-DD-{change-id}
-mkdir openspec/changes/archive/{日期}-{change-id}
-```
-
-### 3.2 移动变更文件
-
-```bash
-# 移动所有文件到归档目录
-mv openspec/changes/{change-id}/* openspec/changes/archive/{日期}-{change-id}/
-rmdir openspec/changes/{change-id}
-```
-
-### 3.3 更新规格文档（如有变更）
-
-如果 `changes/{change-id}/specs/` 中有规格增量：
-1. 将增量合并到 `openspec/specs/` 对应的规格文档中
-2. 删除增量文件
-
----
-
-## Step 4: 提交归档
-
-```bash
-git add openspec/
-git commit -m "archive: 归档 {change-id} OpenSpec 变更"
-```
-
----
-
-## 归档清单
-
-- [ ] 确认 change-id
-- [ ] 验证所有任务已完成
-- [ ] 创建归档目录 `archive/{日期}-{change-id}`
-- [ ] 移动变更文件到归档目录
-- [ ] 更新规格文档（如有）
-- [ ] 提交 git 变更
-- [ ] 通知用户归档完成
-
----
-
-## 归档后的目录结构
-
-```
-openspec/changes/
-├── archive/
-│   └── 2024-12-15-{change-id}/
-│       ├── proposal.md
-│       ├── design.md
-│       ├── tasks.md
-│       └── specs/
-└── {其他进行中的变更}/
-```
+**Reference**
+- Use `openspec list` to confirm change IDs before archiving.
+- Inspect refreshed specs with `openspec list --specs` and address any validation issues before handing off.
+- Execution directories are cleaned up automatically; no orphan folders should remain after archive.
+<!-- OPENSPEC:END -->

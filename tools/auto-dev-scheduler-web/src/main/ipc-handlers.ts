@@ -134,6 +134,13 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions): void {
     return state;
   });
 
+  ipcMain.handle(IPC_CHANNELS.TASK_RETRY, async (_event, args: { taskId?: unknown } | undefined) => {
+    const taskId = typeof args?.taskId === 'string' ? args.taskId.trim() : '';
+    if (!taskId) throw new Error('task:retry: taskId cannot be empty');
+    scheduler.retryTask(taskId);
+    emitFullState();
+  });
+
   ipcMain.handle(IPC_CHANNELS.WORKER_SEND, async (_event, args: { workerId?: unknown; content?: unknown } | undefined) => {
     const workerId = typeof args?.workerId === 'number' ? args.workerId : NaN;
     const content = typeof args?.content === 'string' ? args.content : '';

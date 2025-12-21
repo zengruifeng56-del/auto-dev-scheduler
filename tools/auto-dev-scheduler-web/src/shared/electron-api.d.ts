@@ -85,6 +85,9 @@ export interface ElectronAPI {
   stop: () => Promise<void>;
   getState: () => Promise<SchedulerFullState | null>;
 
+  // Task Commands
+  retryTask: (taskId: string) => Promise<void>;
+
   // Worker Commands
   sendToWorker: (workerId: number, content: string) => Promise<void>;
   killWorker: (workerId: number) => Promise<void>;

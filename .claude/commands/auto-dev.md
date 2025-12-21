@@ -189,6 +189,64 @@ pytest tests/    # 测试 100% 通过（如适用）
 | Git 操作 | pull/add/commit/push | ❌ 全部禁止 |
 | 完成方式 | 标记状态 + push | 正常退出即可 |
 
+### REVIEW-SYNC 任务执行流程
+
+当任务 ID 为 `REVIEW-SYNC` 时，执行以下审核与同步流程：
+
+> 📌 此任务**必须**是最后一个 Wave，确保所有实施任务完成后执行
+
+#### Step 1: 定位 tasks.md 文件
+
+从 AUTO-DEV.md 头部提取 OpenSpec 变更 ID，定位对应的 tasks.md：
+```
+openspec/changes/{change-id}/tasks.md
+```
+
+#### Step 2: 审核代码改动
+
+1. 读取 tasks.md 中的所有任务项
+2. 对每个任务，验证代码是否已实现：
+   - 检查目标文件是否存在
+   - 检查关键函数/类是否已添加
+   - 验证功能逻辑是否正确
+
+#### Step 3: 同步任务状态
+
+使用 Edit 工具修改 tasks.md：
+1. 将已完成任务的 `- [ ]` 改为 `- [x]`
+2. 保留未完成任务的 `- [ ]` 并在下方添加原因说明
+3. 同步更新验收检查清单
+
+**示例修改**：
+```markdown
+# Before
+- [ ] 在 `BattleUnit.ts` 添加 `spawnType` 字段
+
+# After
+- [x] 在 `BattleUnit.ts` 添加 `spawnType` 字段
+```
+
+#### Step 4: 输出审核报告
+
+完成后输出简要报告：
+```
+## REVIEW-SYNC 审核报告
+
+**OpenSpec 变更**: {change-id}
+**审核时间**: {当前时间}
+
+### 完成情况
+- 总任务数: X
+- 已完成: Y
+- 未完成: Z
+
+### 未完成项（如有）
+- {任务描述}: {未完成原因}
+
+### tasks.md 已更新
+- 所有已完成任务已标记为 [x]
+```
+
 ---
 
 ## 模式 A: 计划文档转执行文档

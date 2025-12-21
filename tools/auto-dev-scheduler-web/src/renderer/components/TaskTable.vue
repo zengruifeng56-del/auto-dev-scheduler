@@ -113,6 +113,11 @@ const handleRowClick = (row: TableRow) => {
   }
 }
 
+const handleRetry = (taskId: string, event: Event) => {
+  event.stopPropagation()
+  store.retryTask(taskId)
+}
+
 const rowClassName = ({ row }: { row: TableRow }) => {
   const classes: string[] = []
   if (row.id === selectedTaskId.value) {
@@ -175,6 +180,20 @@ const rowClassName = ({ row }: { row: TableRow }) => {
           </span>
         </template>
       </el-table-column>
+
+      <!-- Actions Column -->
+      <el-table-column label="" width="60" align="center">
+        <template #default="{ row }">
+          <button
+            v-if="!row.isGroup && row.status === 'failed'"
+            class="retry-btn"
+            title="重试任务"
+            @click="handleRetry(row.id, $event)"
+          >
+            ↻
+          </button>
+        </template>
+      </el-table-column>
     </el-table>
 
     <!-- Empty state -->
@@ -233,6 +252,23 @@ const rowClassName = ({ row }: { row: TableRow }) => {
 
 .duration-active {
   color: var(--vscode-accent-orange);
+}
+
+/* Retry button */
+.retry-btn {
+  background: transparent;
+  border: 1px solid var(--vscode-accent-blue, #007acc);
+  color: var(--vscode-accent-blue, #007acc);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.retry-btn:hover {
+  background: var(--vscode-accent-blue, #007acc);
+  color: var(--vscode-bg, #1e1e1e);
 }
 
 /* Empty state */

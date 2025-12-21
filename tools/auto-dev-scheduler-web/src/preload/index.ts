@@ -51,6 +51,12 @@ const electronAPI: ElectronAPI = {
   getState: () => ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_GET_STATE),
 
   // ==========================================================================
+  // Task Commands
+  // ==========================================================================
+  retryTask: (taskId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.TASK_RETRY, { taskId }),
+
+  // ==========================================================================
   // Worker Commands
   // ==========================================================================
   sendToWorker: (workerId: number, content: string) =>

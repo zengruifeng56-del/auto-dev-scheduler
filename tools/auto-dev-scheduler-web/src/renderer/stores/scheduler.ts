@@ -272,6 +272,14 @@ export const useSchedulerStore = defineStore('scheduler', {
       }
     },
 
+    async retryTask(taskId: string) {
+      try {
+        await window.electronAPI.retryTask(taskId);
+      } catch (err: unknown) {
+        this.lastError = err instanceof Error ? err.message : '重试任务失败';
+      }
+    },
+
     async sendToWorker(workerId: number, content: string) {
       try {
         await window.electronAPI.sendToWorker(workerId, content);

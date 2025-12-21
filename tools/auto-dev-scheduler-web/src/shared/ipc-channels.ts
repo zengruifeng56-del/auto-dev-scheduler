@@ -15,6 +15,9 @@ export const IPC_CHANNELS = {
   SCHEDULER_STOP: 'scheduler:stop',
   SCHEDULER_GET_STATE: 'scheduler:getState',
 
+  // Task Commands (Renderer → Main)
+  TASK_RETRY: 'task:retry',
+
   // Worker Commands (Renderer → Main)
   WORKER_SEND: 'worker:send',
   WORKER_KILL: 'worker:kill',

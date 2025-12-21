@@ -90,6 +90,43 @@ openspec/execution/{project}/AUTO-DEV.md  ← 粗粒度任务（多 Claude 用�
 2. `**依赖**:` 或 `**依赖**：` 字段
 3. `**状态**:` 或 `**状态**：` 字段
 
+### REVIEW-SYNC 任务（必需）
+
+> **重要**：每个 AUTO-DEV.md **必须**在最后一个 Wave 包含 `REVIEW-SYNC` 任务！
+
+该任务负责：
+1. 审核代码改动与 tasks.md 的一致性
+2. 验证每个任务是否完成
+3. 勾选 tasks.md 中已完成任务的 checkbox
+
+**标准模板**：
+```markdown
+## Wave N: 审核与同步
+
+### REVIEW-SYNC: 审核改动并同步任务状态
+
+- [ ] 审核 tasks.md 与代码改动的一致性
+
+**依赖**: {前一个 Wave 的所有任务 ID}
+
+**执行步骤**:
+1. 读取 `openspec/changes/{change-id}/tasks.md`
+2. 对比当前代码改动（git diff 或逐文件审查）
+3. 逐项验证 tasks.md 中每个任务是否完成
+4. 将已完成任务的 `- [ ]` 改为 `- [x]`
+5. 未完成任务保留 `- [ ]` 并记录原因
+
+**验收标准**:
+- tasks.md 所有已完成任务标记为 [x]
+- 验收检查清单同步更新
+- 未完成项有明确原因说明
+```
+
+**规则**：
+- REVIEW-SYNC 必须是最后一个 Wave 的唯一任务
+- 依赖所有前序任务（确保实施完成后执行）
+- 执行时使用 Edit 工具修改 tasks.md
+
 **正确示例**：
 ```markdown
 ### W1-T1: 创建目录结构

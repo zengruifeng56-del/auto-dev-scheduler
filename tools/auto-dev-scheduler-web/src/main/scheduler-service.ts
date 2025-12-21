@@ -289,6 +289,18 @@ export class Scheduler extends EventEmitter {
     await this.logManager.clearTaskLogs(taskId);
   }
 
+  retryTask(taskId: string): void {
+    const task = this.tasks.get(taskId);
+    if (!task || task.status !== 'failed') return;
+
+    this.setTaskStatus(task, 'ready');
+    this.cascadeReset(taskId);
+
+    if (this.running) {
+      void this.tick('retryTask');
+    }
+  }
+
   // --------------------------------------------------------------------------
   // Tick Loop
   // --------------------------------------------------------------------------
@@ -364,6 +376,47 @@ export class Scheduler extends EventEmitter {
     }
   }
 
+  private cascadeFailure(failedTaskId: string): void {
+    const queue: string[] = [failedTaskId];
+    const visited = new Set(queue);
+
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+
+      for (const task of this.tasks.values()) {
+        if (!task.dependencies?.includes(currentId)) continue;
+        if (visited.has(task.id)) continue;
+
+        visited.add(task.id);
+        if (task.status !== 'success' && task.status !== 'failed') {
+          this.setTaskStatus(task, 'failed');
+        }
+        queue.push(task.id);
+      }
+    }
+  }
+
+  private cascadeReset(retriedTaskId: string): void {
+    const queue: string[] = [retriedTaskId];
+    const visited = new Set(queue);
+
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+
+      for (const task of this.tasks.values()) {
+        if (!task.dependencies?.includes(currentId)) continue;
+        if (visited.has(task.id)) continue;
+
+        visited.add(task.id);
+        if (task.status === 'failed') {
+          const nextStatus = this.canExecute(task, this.tasks) ? 'ready' : 'pending';
+          this.setTaskStatus(task, nextStatus);
+        }
+        queue.push(task.id);
+      }
+    }
+  }
+
   private setTaskStatus(task: Task, status: TaskStatus, duration?: number): void {
     const prev = task.status;
     task.status = status;
@@ -410,17 +463,25 @@ export class Scheduler extends EventEmitter {
         .map(w => w.assignedTaskId)
     );
 
-    return [...this.tasks.values()]
+    // Find incomplete tasks (not success/failed)
+    const incompleteTasks = [...this.tasks.values()].filter(
+      t => t.status !== 'success' && t.status !== 'failed'
+    );
+    if (incompleteTasks.length === 0) return [];
+
+    // Determine the active wave (minimum wave among incomplete tasks)
+    const activeWave = Math.min(...incompleteTasks.map(t => t.wave));
+
+    // Only return tasks from the active wave
+    return incompleteTasks
       .filter(t =>
+        t.wave === activeWave &&
         t.status === 'ready' &&
         !lockedTaskIds.has(t.id) &&
         !assignedTaskIds.has(t.id) &&
         this.canExecute(t, this.tasks)
       )
-      .sort((a, b) => {
-        if (a.wave !== b.wave) return a.wave - b.wave;
-        return a.id.localeCompare(b.id);
-      });
+      .sort((a, b) => a.id.localeCompare(b.id));
   }
 
   private isAllTasksSuccess(): boolean {
@@ -562,6 +623,9 @@ export class Scheduler extends EventEmitter {
       if (task) {
         const duration = Math.round(durationMs / 1000);
         this.setTaskStatus(task, success ? 'success' : 'failed', duration);
+        if (!success) {
+          this.cascadeFailure(taskId);
+        }
       }
 
       // End task logging
@@ -604,6 +668,7 @@ export class Scheduler extends EventEmitter {
       const task = this.tasks.get(taskId);
       if (task && task.status === 'running') {
         this.setTaskStatus(task, 'failed');
+        this.cascadeFailure(taskId);
       }
       void this.logManager.endTaskLog(taskId);
       this.unlockTask(taskId);

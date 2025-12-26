@@ -76,8 +76,9 @@ export async function updateTaskCheckbox(
 
     // Pattern: ### TASK-ID: Title\n\n- [ ] or - [x]
     // Match the task header and its checkbox on the next non-empty line
+    // Support both LF (\n) and CRLF (\r\n) line endings
     const taskHeaderPattern = new RegExp(
-      `(###\\s+${escapeRegex(taskId)}[^\\n]*\\n\\n?)([-*+]\\s*\\[)([xX\\s])(\\])`,
+      `(###\\s+${escapeRegex(taskId)}[^\\r\\n]*\\r?\\n(?:\\r?\\n)?)([-*+]\\s*\\[)([xX\\s])(\\])`,
       'm'
     );
 

@@ -1,13 +1,14 @@
 /**
- * Scheduler Service - 简化版
- * - AUTO-DEV.md 只读，启动时解析一次
+ * Scheduler Service
+ * - AUTO-DEV.md 启动时解析，任务完成时更新 checkbox 状态
  * - 调度器内存管理所有任务状态和锁
- * - 删除 git 同步、文件写入、重复解析、检查点恢复、交付检查
+ * - 文件写入队列确保并发安全
  */
 
 import { EventEmitter } from 'node:events';
 
 import { ClaudeWorker, type ClaudeWorkerConfig } from './claude-worker';
+import { updateTaskCheckbox } from './file-writer';
 import { LogManager } from './log-manager';
 import { inferProjectRoot, parseAutoDevFile } from './parser';
 import type {
@@ -653,7 +654,12 @@ export class Scheduler extends EventEmitter {
       if (task) {
         const duration = Math.round(durationMs / 1000);
         this.setTaskStatus(task, success ? 'success' : 'failed', duration);
-        if (!success) {
+        if (success) {
+          // Update checkbox in AUTO-DEV.md (queued for thread safety)
+          void updateTaskCheckbox(this.filePath, taskId, true).catch(err => {
+            console.error(`[Scheduler] Failed to update checkbox for ${taskId}:`, err);
+          });
+        } else {
           this.cascadeFailure(taskId);
         }
       }

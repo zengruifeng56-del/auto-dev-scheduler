@@ -487,13 +487,26 @@ export class ClaudeWorker extends EventEmitter {
     const displayName = formatToolName(toolName);
 
     // All tool calls use slow tool timeout to prevent premature idle kills
-    const slowCategory = this.inferSlowToolCategory(toolName, detail);
-    this.currentSlowToolCategory = slowCategory;
-    this.slowToolStartMs = Date.now();
-    const timeoutMin = Math.round(this.watchdog.slowToolTimeouts[slowCategory] / 60_000);
+    const newCategory = this.inferSlowToolCategory(toolName, detail);
+    const newTimeoutMs = this.watchdog.slowToolTimeouts[newCategory];
+
+    // Only update slow tool tracking if:
+    // 1. No slow tool is currently being tracked, OR
+    // 2. New tool has a LONGER timeout (preserve the longest timeout)
+    const currentTimeoutMs = this.currentSlowToolCategory
+      ? this.watchdog.slowToolTimeouts[this.currentSlowToolCategory]
+      : 0;
+
+    if (newTimeoutMs > currentTimeoutMs) {
+      this.currentSlowToolCategory = newCategory;
+      this.slowToolStartMs = Date.now();
+    }
+
+    const effectiveCategory = this.currentSlowToolCategory ?? newCategory;
+    const timeoutMin = Math.round(this.watchdog.slowToolTimeouts[effectiveCategory] / 60_000);
     // Only log timeout info for non-default categories
-    if (slowCategory !== 'default') {
-      this.emitLog('tool', `${displayName} → ${detail ?? ''} (slow tool: ${slowCategory}, timeout: ${timeoutMin}min)`);
+    if (newCategory !== 'default') {
+      this.emitLog('tool', `${displayName} → ${detail ?? ''} (slow tool: ${newCategory}, timeout: ${timeoutMin}min)`);
     } else {
       this.emitLog('tool', detail ? `${displayName} → ${detail}` : displayName);
     }

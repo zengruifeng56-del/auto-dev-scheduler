@@ -164,10 +164,11 @@ function parseTasks(content: string, waveMap: Map<string, number>): Map<string, 
     let statusRaw = extractField(block, '状态');
 
     // Fallback: extract status from checkbox patterns like "- [ ]", "- [x]", "- [~]"
+    // Also support indented lists, '+' markers, and uppercase X
     if (!statusRaw) {
-      const checkboxMatch = block.match(/^[-*]\s*\[([ x~!])\]/m);
+      const checkboxMatch = block.match(/^\s*[-*+]\s*\[([ xX~!])\]/m);
       if (checkboxMatch) {
-        const mark = checkboxMatch[1];
+        const mark = (checkboxMatch[1] ?? ' ').toLowerCase();
         if (mark === 'x') statusRaw = '已完成';
         else if (mark === '~') statusRaw = '执行中';
         else if (mark === '!') statusRaw = '阻塞';

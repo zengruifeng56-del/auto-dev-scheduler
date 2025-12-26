@@ -87,6 +87,13 @@ interface WorkerWrapper {
   generation: number;
 }
 
+interface CompletedWorkerLog {
+  workerId: number;
+  taskId: string;
+  logs: LogEntry[];
+  stopped?: boolean;  // true if stopped manually, false/undefined if completed normally
+}
+
 // ============================================================================
 // Configuration
 // ============================================================================
@@ -114,6 +121,7 @@ export class Scheduler extends EventEmitter {
   // Worker state
   private workers = new Map<number, WorkerWrapper>();
   private workerGeneration = 0;
+  private completedWorkerLogs: CompletedWorkerLog[] = [];
 
   // Scheduler state
   private running = false;
@@ -137,17 +145,23 @@ export class Scheduler extends EventEmitter {
     this.projectRoot = inferProjectRoot(filePath);
     this.tasks.clear();
     this.taskLocks.clear();
+    this.completedWorkerLogs = [];
 
     const parsed = await parseAutoDevFile(filePath);
 
-    // Initialize tasks: ignore file history status, determine by dependencies
+    // Initialize tasks: respect terminal states (success/failed) from file, recalculate others
     for (const [id, task] of parsed.tasks) {
-      this.tasks.set(id, {
-        ...task,
-        // Tasks without deps start as 'ready', tasks with deps start as 'pending'
-        // (deps can only be satisfied by success in current run)
-        status: task.dependencies.length > 0 ? 'pending' : 'ready'
-      });
+      const status = task.status === 'success' || task.status === 'failed'
+        ? task.status
+        : 'pending';
+      this.tasks.set(id, { ...task, status });
+    }
+
+    // Update tasks whose dependencies are already satisfied to 'ready'
+    for (const task of this.tasks.values()) {
+      if (task.status === 'pending' && this.canExecute(task, this.tasks)) {
+        task.status = 'ready';
+      }
     }
 
     this.emitEvent({
@@ -193,9 +207,16 @@ export class Scheduler extends EventEmitter {
     this.paused = false;
     this.stopTickTimer();
 
-    // Kill all workers
+    // Archive logs and kill all workers
     const killPromises = [...this.workers.values()].map(async (w) => {
       w.closing = true;
+      // Archive logs before killing (mark as stopped)
+      this.completedWorkerLogs.push({
+        workerId: w.id,
+        taskId: w.taskId,
+        logs: [...w.logs],
+        stopped: true
+      });
       try {
         await w.worker.kill();
       } catch { /* ignore */ }
@@ -274,8 +295,17 @@ export class Scheduler extends EventEmitter {
     lines.push(`Exported: ${new Date().toISOString()}`);
     lines.push('');
 
+    for (const completed of this.completedWorkerLogs) {
+      const status = completed.stopped ? 'stopped' : 'completed';
+      lines.push(`--- Worker ${completed.workerId} (Task: ${completed.taskId}) [${status}] ---`);
+      for (const entry of completed.logs) {
+        lines.push(`[${entry.ts}] [${entry.type}] ${entry.content}`);
+      }
+      lines.push('');
+    }
+
     for (const [workerId, wrapper] of this.workers) {
-      lines.push(`--- Worker ${workerId} (Task: ${wrapper.taskId ?? wrapper.assignedTaskId}) ---`);
+      lines.push(`--- Worker ${workerId} (Task: ${wrapper.taskId}) [active] ---`);
       for (const entry of wrapper.logs) {
         lines.push(`[${entry.ts}] [${entry.type}] ${entry.content}`);
       }
@@ -526,7 +556,7 @@ export class Scheduler extends EventEmitter {
       assignedTaskId,
       startupMessage: {
         type: 'user',
-        message: { role: 'user', content: `/auto-dev --task ${assignedTaskId}` }
+        message: { role: 'user', content: `/auto-dev --task ${assignedTaskId} --file "${this.filePath}"` }
       },
       autoKillOnComplete: true
     };
@@ -680,6 +710,11 @@ export class Scheduler extends EventEmitter {
 
   private cleanupWorker(wrapper: WorkerWrapper): void {
     wrapper.closing = true;
+    this.completedWorkerLogs.push({
+      workerId: wrapper.id,
+      taskId: wrapper.taskId,
+      logs: [...wrapper.logs]
+    });
     this.workers.delete(wrapper.id);
 
     this.emitEvent({

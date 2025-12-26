@@ -125,6 +125,7 @@ openspec validate [change] --strict
 ```
 openspec/
 ├── project.md              # Project conventions
+├── ROADMAP.md              # Version milestones and progress tracking
 ├── specs/                  # Current truth - what IS built
 │   └── [capability]/       # Single focused capability
 │       ├── spec.md         # Requirements and scenarios
@@ -139,6 +140,42 @@ openspec/
 │   │           └── spec.md # ADDED/MODIFIED/REMOVED
 │   └── archive/            # Completed changes
 ```
+
+## Milestone Integration
+
+Changes should be associated with a version milestone defined in `ROADMAP.md`.
+
+### ROADMAP.md Structure
+```markdown
+## v0.1 - MVP Core
+
+**目标**: Brief description of milestone goal.
+
+### 功能清单
+| 模块 | 功能 | 状态 | OpenSpec |
+|------|------|------|----------|
+| Module | Feature | ✅/🔄/⬚ | change-id |
+```
+
+### When Creating Proposals
+1. Check `ROADMAP.md` to identify which milestone the change belongs to
+2. Add milestone reference in `proposal.md`:
+```markdown
+## Impact
+- **Milestone**: v0.1 MVP
+- Affected specs: [list capabilities]
+```
+
+### When Archiving Changes
+1. Update `ROADMAP.md` feature status to ✅ Done
+2. Add change to the "已归档的 OpenSpec 变更" table
+3. Update progress statistics at the bottom
+
+### Status Icons
+- ✅ Done - Feature completed and archived
+- 🔄 In Progress - Active change exists
+- 🔄 Partial - Feature partially complete (still in progress)
+- ⬚ Planned - Not yet started
 
 ## Creating Change Proposals
 

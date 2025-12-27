@@ -246,35 +246,6 @@ export class ClaudeWorker extends EventEmitter {
     }
   }
 
-  /**
-   * Reset worker state and assign a new task (for worker reuse).
-   * Allows the same Claude process to execute multiple tasks sequentially.
-   */
-  beginTask(taskId: string): void {
-    if (!this.process) {
-      throw new Error('ClaudeWorker not started');
-    }
-
-    const trimmed = taskId.trim();
-    if (!trimmed) {
-      throw new Error('taskId cannot be empty');
-    }
-
-    // Reset single-task state: allow same Claude process to run multiple tasks
-    this.completed = false;
-    this.killing = false;
-    this.assignedTaskId = trimmed;
-    this.taskId = trimmed;
-    this.tokenUsage = null;
-    this.currentTool = null;
-    this.currentSlowToolCategory = null;
-    this.slowToolStartMs = null;
-
-    this.startMs = Date.now();
-    this.lastActivityMs = this.startMs;
-    this.startWatchdog();
-  }
-
   send(message: object): void {
     if (!this.process) {
       throw new Error('ClaudeWorker not started');

@@ -219,7 +219,9 @@ claude --version
 
 如果这个项目对你有帮助，欢迎请作者喝杯咖啡 ☕
 
-<img src="docs/images/wechat-pay.png" alt="微信支付" width="300">
+<img src="docs/images/wechat-pay.png" alt="支付宝" width="300">
+
+*使用支付宝扫码捐助*
 
 ---
 

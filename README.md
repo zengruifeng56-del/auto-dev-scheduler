@@ -368,6 +368,7 @@ Electron 版本理论上支持跨平台，但目前仅在 Windows 上测试。/a
 **OpenSpec 增强**
 
 - **Milestone 集成**：AGENTS.md 新增版本里程碑集成指南，支持 ROADMAP.md 跟踪
+- **DELIVERY 任务规范**：新增交付文档生成任务，REVIEW-SYNC 调整为倒数第二 Wave
 
 **Bug 修复**
 

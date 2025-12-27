@@ -92,7 +92,7 @@ openspec/execution/{project}/AUTO-DEV.md  ← 粗粒度任务（多 Claude 用�
 
 ### REVIEW-SYNC 任务（必需）
 
-> **重要**：每个 AUTO-DEV.md **必须**在最后一个 Wave 包含 `REVIEW-SYNC` 任务！
+> **重要**：每个 AUTO-DEV.md **必须**在倒数第二个 Wave 包含 `REVIEW-SYNC` 任务！
 
 该任务负责：
 1. 审核代码改动与 tasks.md 的一致性
@@ -123,9 +123,50 @@ openspec/execution/{project}/AUTO-DEV.md  ← 粗粒度任务（多 Claude 用�
 ```
 
 **规则**：
-- REVIEW-SYNC 必须是最后一个 Wave 的唯一任务
+- REVIEW-SYNC 必须是倒数第二个 Wave 的唯一任务
 - 依赖所有前序任务（确保实施完成后执行）
 - 执行时使用 Edit 工具修改 tasks.md
+
+### DELIVERY 任务（必需）
+
+> **重要**：每个 AUTO-DEV.md **必须**在最后一个 Wave 包含 `DELIVERY` 任务！
+
+该任务负责：
+1. 生成交付文档 `DELIVERY.md`
+2. 汇总所有已完成任务的成果
+3. 提供测试指南和归档流程
+
+**标准模板**：
+```markdown
+## Wave N+1: 生成交付文档
+
+### DELIVERY: 生成交付文档
+
+- [ ] 生成 DELIVERY.md 交付文档
+
+**依赖**: REVIEW-SYNC
+
+**执行步骤**:
+1. 读取 `openspec/changes/{change-id}/proposal.md` 获取变更概述
+2. 读取 `openspec/changes/{change-id}/tasks.md` 获取已完成任务列表
+3. 生成 `openspec/execution/{project}/DELIVERY.md`，包含：
+   - 完成内容摘要（按 Wave 分组列出已完成任务）
+   - 新增/修改文件清单
+   - 测试指南（构建验证、功能测试、验收标准）
+   - 归档流程（/openspec:archive 命令）
+   - 相关文档链接
+
+**验收标准**:
+- DELIVERY.md 文件已生成
+- 包含所有已完成任务的摘要
+- 测试指南清晰可执行
+- 归档命令正确
+```
+
+**规则**：
+- DELIVERY 必须是最后一个 Wave 的唯一任务
+- 依赖 REVIEW-SYNC 任务
+- 参考 `DELIVERY-TEMPLATE.md` 生成交付文档
 
 **正确示例**：
 ```markdown
@@ -219,6 +260,7 @@ Wave 3: TASK-06
 | 项目 | 简述 | OpenSpec 来源 | 状态 | 进度 | 前置条件 |
 |------|------|---------------|------|------|----------|
 | battle-server-authority | 服务器权威战斗架构重构 | refactor-battle-server-authority | 🟦 待执行 | 0/15 | 无 |
+| refactor-battle-lifecycle | 战斗生命周期重构 | refactor-battle-lifecycle | ✅ 已完成 | 30/30 | 无 |
 
 ---
 

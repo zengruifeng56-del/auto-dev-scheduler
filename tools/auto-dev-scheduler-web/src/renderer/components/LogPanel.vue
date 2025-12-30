@@ -377,7 +377,7 @@ watch(
           @click="toggleFollow"
           :title="follow ? '自动滚动: 开' : '自动滚动: 关'"
         >
-          AUTO
+          自动
         </button>
 
         <button

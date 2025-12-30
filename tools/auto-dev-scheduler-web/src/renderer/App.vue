@@ -6,6 +6,7 @@ import ControlBar from './components/ControlBar.vue';
 import StatusBar from './components/StatusBar.vue';
 import TaskTable from './components/TaskTable.vue';
 import LogPanel from './components/LogPanel.vue';
+import IssuesPanel from './components/IssuesPanel.vue';
 
 const store = useSchedulerStore();
 const ipcReady = computed(() => store.ipcReady);
@@ -29,6 +30,8 @@ const visibleCount = computed(() => {
   const busy = busyWorkerIds.value.length;
   return busy > 0 ? busy : 4;
 });
+
+const hasIssues = computed(() => store.issues.length > 0);
 
 function handleSendToWorker(workerId: number, content: string) {
   store.sendToWorker(workerId, content);
@@ -77,6 +80,11 @@ onUnmounted(() => {
       <!-- 3. Task Table (Flexible Height) -->
       <section class="section-table">
         <TaskTable />
+      </section>
+
+      <!-- 3.5 Issues Panel (Conditional) -->
+      <section v-if="hasIssues" class="section-issues">
+        <IssuesPanel />
       </section>
 
       <!-- 4. Log Panels (Flexible Bottom) -->
@@ -183,12 +191,20 @@ onUnmounted(() => {
 
 .section-table {
   flex: 0 1 auto;
-  max-height: 35%;
+  max-height: 30%;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   padding: 0;
   min-height: 120px;
+}
+
+.section-issues {
+  flex: 0 0 auto;
+  max-height: 25%;
+  min-height: 100px;
+  overflow: hidden;
+  border-top: 1px solid var(--vscode-border, #333);
 }
 
 /* Logs Section */

@@ -77,6 +77,14 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions): void {
     broadcast(getWebContents, IPC_CHANNELS.EVENT_WORKER_STATE, msg.payload);
   });
 
+  scheduler.on('issueReported', (msg) => {
+    broadcast(getWebContents, IPC_CHANNELS.EVENT_ISSUE_REPORTED, msg.payload);
+  });
+
+  scheduler.on('issueUpdate', (msg) => {
+    broadcast(getWebContents, IPC_CHANNELS.EVENT_ISSUE_UPDATE, msg.payload);
+  });
+
   // --------------------------------------------------------------------------
   // Renderer → Main Command Handlers (ipcRenderer.invoke)
   // --------------------------------------------------------------------------
@@ -168,6 +176,23 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions): void {
   });
 
   // --------------------------------------------------------------------------
+  // Issue Handlers
+  // --------------------------------------------------------------------------
+
+  ipcMain.handle(IPC_CHANNELS.ISSUE_UPDATE_STATUS, async (_event, args: { issueId?: unknown; status?: unknown } | undefined) => {
+    const issueId = typeof args?.issueId === 'string' ? args.issueId.trim() : '';
+    const status = typeof args?.status === 'string' ? args.status : '';
+
+    if (!issueId) throw new Error('issue:updateStatus: issueId cannot be empty');
+    if (!['open', 'fixed', 'ignored'].includes(status)) {
+      throw new Error('issue:updateStatus: status must be "open", "fixed", or "ignored"');
+    }
+
+    scheduler.updateIssueStatus(issueId, status as 'open' | 'fixed' | 'ignored');
+    emitFullState();
+  });
+
+  // --------------------------------------------------------------------------
   // Watchdog Config Handlers
   // --------------------------------------------------------------------------
 
@@ -191,5 +216,27 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions): void {
   ipcMain.handle(IPC_CHANNELS.WATCHDOG_SET_CONFIG, async (_event, config: Partial<WatchdogConfig> | undefined) => {
     if (!watchdog || !config) return;
     watchdog.updateConfig(config);
+  });
+
+  // --------------------------------------------------------------------------
+  // Auto-Retry Config Handlers
+  // --------------------------------------------------------------------------
+
+  ipcMain.handle(IPC_CHANNELS.AUTO_RETRY_GET_CONFIG, async () => {
+    return scheduler.getAutoRetryConfig();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.AUTO_RETRY_SET_CONFIG, async (_event, config: unknown) => {
+    if (!config || typeof config !== 'object') return;
+    const partial: Record<string, unknown> = {};
+    const cfg = config as Record<string, unknown>;
+    if (typeof cfg.enabled === 'boolean') partial.enabled = cfg.enabled;
+    if (typeof cfg.maxRetries === 'number' && Number.isFinite(cfg.maxRetries)) {
+      partial.maxRetries = cfg.maxRetries;
+    }
+    if (typeof cfg.baseDelayMs === 'number' && Number.isFinite(cfg.baseDelayMs)) {
+      partial.baseDelayMs = cfg.baseDelayMs;
+    }
+    scheduler.updateAutoRetryConfig(partial);
   });
 }

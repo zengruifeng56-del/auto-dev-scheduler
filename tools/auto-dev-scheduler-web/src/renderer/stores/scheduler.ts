@@ -5,6 +5,8 @@ import type {
   WorkerState,
   Progress,
   ServerMessage,
+  Issue,
+  IssueStatus,
 } from '@shared/types';
 
 let ipcUnsubscribers: Array<() => void> = [];
@@ -25,6 +27,7 @@ export const useSchedulerStore = defineStore('scheduler', {
     tasks: [] as Task[],
     workers: new Map<number, WorkerState>(),
     progress: { completed: 0, total: 0 } as Progress,
+    issues: [] as Issue[],
 
     // UI state
     fontSize: 12
@@ -55,6 +58,18 @@ export const useSchedulerStore = defineStore('scheduler', {
     progressPercent: (state) => {
       if (state.progress.total === 0) return 0;
       return Math.round((state.progress.completed / state.progress.total) * 100);
+    },
+
+    openIssues: (state) => {
+      return state.issues.filter(i => i.status === 'open');
+    },
+
+    openIssueCount: (state) => {
+      return state.issues.filter(i => i.status === 'open').length;
+    },
+
+    blockerCount: (state) => {
+      return state.issues.filter(i => i.status === 'open' && i.severity === 'blocker').length;
     }
   },
 
@@ -96,6 +111,12 @@ export const useSchedulerStore = defineStore('scheduler', {
         }),
         api.onFullState((payload) => {
           this.handleServerMessage({ type: 'fullState', payload });
+        }),
+        api.onIssueReported((payload) => {
+          this.handleServerMessage({ type: 'issueReported', payload });
+        }),
+        api.onIssueUpdate((payload) => {
+          this.handleServerMessage({ type: 'issueUpdate', payload });
         })
       ];
 
@@ -148,6 +169,12 @@ export const useSchedulerStore = defineStore('scheduler', {
               }
               if (msg.payload.workerId !== undefined) {
                 task.workerId = msg.payload.workerId;
+              }
+              if (msg.payload.retryCount !== undefined) {
+                task.retryCount = msg.payload.retryCount;
+              }
+              if (msg.payload.nextRetryAt !== undefined) {
+                task.nextRetryAt = msg.payload.nextRetryAt ?? undefined;
               }
             }
           }
@@ -207,9 +234,30 @@ export const useSchedulerStore = defineStore('scheduler', {
           this.projectRoot = msg.payload.projectRoot;
           this.tasks = msg.payload.tasks;
           this.progress = msg.payload.progress;
+          this.issues = msg.payload.issues || [];
           this.workers.clear();
           for (const ws of msg.payload.workers) {
             this.workers.set(ws.id, ws);
+          }
+          break;
+
+        case 'issueReported':
+          {
+            const existingIndex = this.issues.findIndex(i => i.id === msg.payload.issue.id);
+            if (existingIndex >= 0) {
+              this.issues[existingIndex] = msg.payload.issue;
+            } else {
+              this.issues.push(msg.payload.issue);
+            }
+          }
+          break;
+
+        case 'issueUpdate':
+          {
+            const issue = this.issues.find(i => i.id === msg.payload.issueId);
+            if (issue) {
+              issue.status = msg.payload.status;
+            }
           }
           break;
 
@@ -302,6 +350,14 @@ export const useSchedulerStore = defineStore('scheduler', {
         this.handleServerMessage({ type: 'exportLogsResponse', payload: { content } });
       } catch (err: unknown) {
         this.lastError = err instanceof Error ? err.message : '导出日志失败';
+      }
+    },
+
+    async updateIssueStatus(issueId: string, status: IssueStatus) {
+      try {
+        await window.electronAPI.updateIssueStatus(issueId, status);
+      } catch (err: unknown) {
+        this.lastError = err instanceof Error ? err.message : '更新问题状态失败';
       }
     },
 

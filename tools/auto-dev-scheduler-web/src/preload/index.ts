@@ -13,8 +13,12 @@ import type {
   IpcWorkerStatePayload,
   IpcFullStatePayload,
   IpcWorkerHealthWarningPayload,
+  IpcIssueReportedPayload,
+  IpcIssueUpdatePayload,
   WatchdogConfigPayload,
+  AutoRetryConfigPayload,
 } from '../shared/electron-api.d';
+import type { IssueStatus } from '../shared/types';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 
 // Helper: Create event subscription with automatic cleanup
@@ -82,6 +86,20 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.invoke(IPC_CHANNELS.WATCHDOG_SET_CONFIG, config),
 
   // ==========================================================================
+  // Auto-Retry Config
+  // ==========================================================================
+  getAutoRetryConfig: () => ipcRenderer.invoke(IPC_CHANNELS.AUTO_RETRY_GET_CONFIG),
+
+  setAutoRetryConfig: (config: Partial<AutoRetryConfigPayload>) =>
+    ipcRenderer.invoke(IPC_CHANNELS.AUTO_RETRY_SET_CONFIG, config),
+
+  // ==========================================================================
+  // Issue Commands
+  // ==========================================================================
+  updateIssueStatus: (issueId: string, status: IssueStatus) =>
+    ipcRenderer.invoke(IPC_CHANNELS.ISSUE_UPDATE_STATUS, { issueId, status }),
+
+  // ==========================================================================
   // Event Subscriptions
   // ==========================================================================
   onFileLoaded: (callback: (payload: IpcFileLoadedPayload) => void) =>
@@ -107,6 +125,12 @@ const electronAPI: ElectronAPI = {
 
   onWorkerHealthWarning: (callback: (payload: IpcWorkerHealthWarningPayload) => void) =>
     createEventSubscription(IPC_CHANNELS.EVENT_WORKER_HEALTH_WARNING, callback),
+
+  onIssueReported: (callback: (payload: IpcIssueReportedPayload) => void) =>
+    createEventSubscription(IPC_CHANNELS.EVENT_ISSUE_REPORTED, callback),
+
+  onIssueUpdate: (callback: (payload: IpcIssueUpdatePayload) => void) =>
+    createEventSubscription(IPC_CHANNELS.EVENT_ISSUE_UPDATE, callback),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

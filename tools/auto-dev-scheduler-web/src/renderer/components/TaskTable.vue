@@ -1,10 +1,25 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useSchedulerStore } from '../stores/scheduler'
+import RetryCountdown from './RetryCountdown.vue'
 import type { Task, TaskStatus } from '@shared/types'
 
 const store = useSchedulerStore()
 const selectedTaskId = ref<string>('')
+const now = ref(Date.now())
+let nowTimer: number | undefined
+
+onMounted(() => {
+  nowTimer = window.setInterval(() => {
+    now.value = Date.now()
+  }, 1000)
+})
+
+onUnmounted(() => {
+  if (nowTimer !== undefined) {
+    clearInterval(nowTimer)
+  }
+})
 
 // Status config: icon and color (with fallback values)
 const statusConfig: Record<TaskStatus | 'wave', { icon: string; color: string }> = {
@@ -44,6 +59,8 @@ interface TableRow {
   duration?: number
   dependencies?: string[]
   workerId?: number
+  retryCount?: number
+  nextRetryAt?: number
   isGroup?: boolean
   children?: Task[]
 }
@@ -145,11 +162,17 @@ const rowClassName = ({ row }: { row: TableRow }) => {
       @row-click="handleRowClick"
     >
       <!-- Status Column -->
-      <el-table-column label="状态" width="80" align="center">
+      <el-table-column label="状态" width="120" align="center">
         <template #default="{ row }">
-          <span class="status-icon" :style="{ color: getStatusConfig(row.status).color }">
-            {{ getStatusConfig(row.status).icon }}
-          </span>
+          <div class="status-cell">
+            <span class="status-icon" :style="{ color: getStatusConfig(row.status).color }">
+              {{ getStatusConfig(row.status).icon }}
+            </span>
+            <RetryCountdown
+              v-if="!row.isGroup && row.status === 'failed' && row.nextRetryAt && row.nextRetryAt > now"
+              :target="row.nextRetryAt"
+            />
+          </div>
         </template>
       </el-table-column>
 
@@ -211,6 +234,14 @@ const rowClassName = ({ row }: { row: TableRow }) => {
   flex-direction: column;
   background-color: var(--vscode-panel-bg);
   overflow: hidden;
+}
+
+/* Status cell */
+.status-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
 /* Status icon */

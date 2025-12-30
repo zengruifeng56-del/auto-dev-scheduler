@@ -4,7 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useSchedulerStore } from '../stores/scheduler'
 
 const store = useSchedulerStore()
-const { running, paused, lastError, progress, activeWorkers } = storeToRefs(store)
+const { running, paused, lastError, progress, activeWorkers, openIssueCount, blockerCount } = storeToRefs(store)
 
 // Derived: all tasks completed
 const isAllComplete = computed(() => {
@@ -94,6 +94,14 @@ watch(isAllComplete, (newVal, oldVal) => {
       <span class="running-label">运行中:</span>
       <span class="running-value">{{ runningTaskIds }}</span>
     </div>
+    <span v-if="openIssueCount > 0" class="separator">|</span>
+    <div v-if="openIssueCount > 0" class="issues-section">
+      <span class="issues-icon">⚠</span>
+      <span class="issues-count" :class="{ 'has-blockers': blockerCount > 0 }">
+        {{ openIssueCount }} 问题
+        <span v-if="blockerCount > 0" class="blocker-badge">{{ blockerCount }} 阻塞</span>
+      </span>
+    </div>
   </div>
 </template>
 
@@ -145,5 +153,32 @@ watch(isAllComplete, (newVal, oldVal) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.issues-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.issues-icon {
+  color: var(--vscode-accent-orange, #c88c32);
+}
+
+.issues-count {
+  color: var(--vscode-accent-orange, #c88c32);
+}
+
+.issues-count.has-blockers {
+  color: var(--vscode-accent-red, #cd4646);
+}
+
+.blocker-badge {
+  margin-left: 4px;
+  padding: 1px 4px;
+  font-size: 10px;
+  background-color: var(--vscode-accent-red, #cd4646);
+  color: #fff;
+  border-radius: 3px;
 }
 </style>

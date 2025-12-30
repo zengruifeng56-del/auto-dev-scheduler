@@ -2,7 +2,7 @@
 import { ref, watch, computed } from 'vue';
 import { Setting } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
-import type { WatchdogConfigPayload } from '../../shared/electron-api.d';
+import type { WatchdogConfigPayload, AutoRetryConfigPayload } from '../../shared/electron-api.d';
 
 const visible = ref(false);
 const loading = ref(false);
@@ -17,6 +17,12 @@ const config = ref<WatchdogConfigPayload>({
     npmBuild: 20 * 60_000,
     default: 10 * 60_000
   }
+});
+
+const autoRetryConfig = ref<AutoRetryConfigPayload>({
+  enabled: true,
+  maxRetries: 2,
+  baseDelayMs: 5_000
 });
 
 // Convert ms to minutes for display
@@ -55,11 +61,21 @@ const defaultTimeoutMinutes = computed({
   set: (v: number) => { config.value.slowToolTimeouts.default = v * 60_000; }
 });
 
+// Auto-retry config: convert ms to seconds for display
+const baseDelaySeconds = computed({
+  get: () => Math.round(autoRetryConfig.value.baseDelayMs / 1000),
+  set: (v: number) => { autoRetryConfig.value.baseDelayMs = v * 1000; }
+});
+
 const loadConfig = async () => {
   loading.value = true;
   try {
-    const loaded = await window.electronAPI.getWatchdogConfig();
-    config.value = loaded;
+    const [watchdogLoaded, retryLoaded] = await Promise.all([
+      window.electronAPI.getWatchdogConfig(),
+      window.electronAPI.getAutoRetryConfig()
+    ]);
+    config.value = watchdogLoaded;
+    autoRetryConfig.value = retryLoaded;
   } catch {
     ElMessage.error('加载配置失败');
   } finally {
@@ -70,7 +86,10 @@ const loadConfig = async () => {
 const saveConfig = async () => {
   loading.value = true;
   try {
-    await window.electronAPI.setWatchdogConfig(config.value);
+    await Promise.all([
+      window.electronAPI.setWatchdogConfig(config.value),
+      window.electronAPI.setAutoRetryConfig(autoRetryConfig.value)
+    ]);
     ElMessage.success('配置已保存');
     visible.value = false;
   } catch {
@@ -102,6 +121,37 @@ watch(visible, (v) => {
     :close-on-click-modal="false"
   >
     <el-form label-width="140px" :disabled="loading" class="settings-form">
+      <el-divider content-position="left">自动重试</el-divider>
+
+      <el-form-item label="启用自动重试">
+        <el-switch v-model="autoRetryConfig.enabled" />
+      </el-form-item>
+
+      <el-form-item label="最大重试次数">
+        <el-input-number
+          v-model="autoRetryConfig.maxRetries"
+          :min="0"
+          :max="10"
+          :step="1"
+          :disabled="!autoRetryConfig.enabled"
+        />
+        <span class="unit">次</span>
+      </el-form-item>
+
+      <el-form-item label="基础延迟">
+        <el-input-number
+          v-model="baseDelaySeconds"
+          :min="1"
+          :max="300"
+          :step="5"
+          :disabled="!autoRetryConfig.enabled"
+        />
+        <span class="unit">秒</span>
+        <el-tooltip content="指数退避：第N次重试延迟 = 基础延迟 × 2^(N-1) + 随机抖动">
+          <el-icon class="help-icon"><QuestionFilled /></el-icon>
+        </el-tooltip>
+      </el-form-item>
+
       <el-divider content-position="left">基本设置</el-divider>
 
       <el-form-item label="检查间隔">

@@ -30,6 +30,13 @@ export const IPC_CHANNELS = {
   WATCHDOG_GET_CONFIG: 'watchdog:getConfig',
   WATCHDOG_SET_CONFIG: 'watchdog:setConfig',
 
+  // Auto-Retry Config (Renderer → Main)
+  AUTO_RETRY_GET_CONFIG: 'autoRetry:getConfig',
+  AUTO_RETRY_SET_CONFIG: 'autoRetry:setConfig',
+
+  // Issue Commands (Renderer → Main)
+  ISSUE_UPDATE_STATUS: 'issue:updateStatus',
+
   // Events (Main → Renderer)
   EVENT_FILE_LOADED: 'scheduler:fileLoaded',
   EVENT_TASK_UPDATE: 'scheduler:taskUpdate',
@@ -39,6 +46,8 @@ export const IPC_CHANNELS = {
   EVENT_WORKER_STATE: 'worker:stateChange',
   EVENT_FULL_STATE: 'scheduler:fullState',
   EVENT_WORKER_HEALTH_WARNING: 'worker:healthWarning',
+  EVENT_ISSUE_REPORTED: 'issue:reported',
+  EVENT_ISSUE_UPDATE: 'issue:update',
 } as const;
 
 export type IpcChannels = typeof IPC_CHANNELS;

@@ -7,11 +7,16 @@
 
 import { EventEmitter } from 'node:events';
 
-import { ClaudeWorker, type ClaudeWorkerConfig } from './claude-worker';
+import { createHash } from 'node:crypto';
+
+import { ClaudeWorker, type ClaudeWorkerConfig, type RawIssueReport } from './claude-worker';
 import { updateTaskCheckbox } from './file-writer';
 import { LogManager } from './log-manager';
 import { inferProjectRoot, parseAutoDevFile } from './parser';
 import type {
+  AutoRetryConfig,
+  Issue,
+  IssueStatus,
   LogEntry,
   Progress,
   Task,
@@ -34,6 +39,8 @@ export interface TaskUpdatePayload {
   status: TaskStatus;
   duration?: number;
   workerId?: number;
+  retryCount?: number;
+  nextRetryAt?: number | null;
 }
 
 export interface WorkerLogPayload {
@@ -55,6 +62,15 @@ export interface WorkerStatePayload {
   currentTool?: string;
 }
 
+export interface IssueReportedPayload {
+  issue: Issue;
+}
+
+export interface IssueUpdatePayload {
+  issueId: string;
+  status: IssueStatus;
+}
+
 export interface SchedulerState {
   running: boolean;
   paused: boolean;
@@ -63,6 +79,7 @@ export interface SchedulerState {
   tasks: Task[];
   workers: WorkerState[];
   progress: Progress;
+  issues: Issue[];
 }
 
 type EventPayload =
@@ -71,7 +88,9 @@ type EventPayload =
   | { type: 'workerLog'; payload: WorkerLogPayload }
   | { type: 'progress'; payload: Progress }
   | { type: 'schedulerState'; payload: SchedulerStatePayload }
-  | { type: 'workerState'; payload: WorkerStatePayload };
+  | { type: 'workerState'; payload: WorkerStatePayload }
+  | { type: 'issueReported'; payload: IssueReportedPayload }
+  | { type: 'issueUpdate'; payload: IssueUpdatePayload };
 
 // ============================================================================
 // Worker Wrapper
@@ -106,6 +125,14 @@ const CONFIG = {
   pendingTaskIdTimeoutMs: 2 * 60_000,  // 2 minutes to detect taskId
 };
 
+const DEFAULT_AUTO_RETRY_CONFIG: AutoRetryConfig = {
+  enabled: true,
+  maxRetries: 2,
+  baseDelayMs: 5_000,
+};
+
+const AUTO_RETRY_MAX_DELAY_MS = 5 * 60_000;  // 5 minutes cap
+
 // ============================================================================
 // Scheduler Class
 // ============================================================================
@@ -118,6 +145,9 @@ export class Scheduler extends EventEmitter {
   // Task state (in-memory management)
   private tasks = new Map<string, Task>();
   private taskLocks = new Map<string, number>();  // taskId → workerId
+
+  // Issue state (deduplicated by signature/title+files)
+  private issues = new Map<string, Issue>();  // dedupKey → Issue
 
   // Worker state
   private workers = new Map<number, WorkerWrapper>();
@@ -135,6 +165,9 @@ export class Scheduler extends EventEmitter {
   // Log manager
   private readonly logManager = new LogManager();
 
+  // Auto-retry config
+  private autoRetryConfig: AutoRetryConfig = { ...DEFAULT_AUTO_RETRY_CONFIG };
+
   // --------------------------------------------------------------------------
   // Public API
   // --------------------------------------------------------------------------
@@ -146,6 +179,7 @@ export class Scheduler extends EventEmitter {
     this.projectRoot = inferProjectRoot(filePath);
     this.tasks.clear();
     this.taskLocks.clear();
+    this.issues.clear();
     this.completedWorkerLogs = [];
 
     const parsed = await parseAutoDevFile(filePath);
@@ -246,7 +280,8 @@ export class Scheduler extends EventEmitter {
       projectRoot: this.projectRoot,
       tasks: this.getTaskList(),
       workers: this.getWorkerStates(),
-      progress: this.getProgress()
+      progress: this.getProgress(),
+      issues: this.getIssueList()
     };
   }
 
@@ -320,11 +355,33 @@ export class Scheduler extends EventEmitter {
     await this.logManager.clearTaskLogs(taskId);
   }
 
+  getAutoRetryConfig(): AutoRetryConfig {
+    return { ...this.autoRetryConfig };
+  }
+
+  updateAutoRetryConfig(partial: Partial<AutoRetryConfig>): void {
+    if (partial.enabled !== undefined) {
+      this.autoRetryConfig.enabled = Boolean(partial.enabled);
+    }
+    if (partial.maxRetries !== undefined && Number.isFinite(partial.maxRetries)) {
+      this.autoRetryConfig.maxRetries = Math.max(0, Math.min(10, Math.floor(partial.maxRetries)));
+    }
+    if (partial.baseDelayMs !== undefined && Number.isFinite(partial.baseDelayMs)) {
+      // Match UI: 1-300 seconds (1000-300000ms)
+      this.autoRetryConfig.baseDelayMs = Math.max(1000, Math.min(300_000, Math.floor(partial.baseDelayMs)));
+    }
+  }
+
   retryTask(taskId: string): void {
     const task = this.tasks.get(taskId);
     if (!task || task.status !== 'failed') return;
 
-    this.setTaskStatus(task, 'ready');
+    // Reset auto-retry state on manual retry
+    task.retryCount = 0;
+    task.nextRetryAt = undefined;
+
+    const nextStatus = this.canExecute(task, this.tasks) ? 'ready' : 'pending';
+    this.setTaskStatus(task, nextStatus);
     this.cascadeReset(taskId);
 
     if (this.running) {
@@ -339,6 +396,9 @@ export class Scheduler extends EventEmitter {
   private async tick(_reason: string): Promise<void> {
     if (!this.running) return;
 
+    // Promote tasks whose retry delay has elapsed
+    this.promoteDueRetries();
+
     // Update pending tasks that now have deps satisfied
     this.updatePendingTasks();
 
@@ -351,10 +411,11 @@ export class Scheduler extends EventEmitter {
       return;
     }
 
-    // Deadlock detection: no workers running and no executable tasks
+    // Deadlock detection: no workers running, no executable tasks, and no pending retries
     const activeCount = [...this.workers.values()].filter(w => !w.closing).length;
     const hasExecutable = this.findExecutableTasks().length > 0;
-    if (activeCount === 0 && !hasExecutable) {
+    const hasPendingRetries = this.hasPendingRetries();
+    if (activeCount === 0 && !hasExecutable && !hasPendingRetries) {
       this.running = false;
       this.stopTickTimer();
       this.emitEvent({ type: 'schedulerState', payload: { running: false, paused: false } });
@@ -405,6 +466,71 @@ export class Scheduler extends EventEmitter {
         this.setTaskStatus(task, 'ready');
       }
     }
+  }
+
+  // --------------------------------------------------------------------------
+  // Auto-Retry Logic
+  // --------------------------------------------------------------------------
+
+  private computeRetryDelayMs(retryCount: number): number {
+    const base = this.autoRetryConfig.baseDelayMs;
+    const attempt = Math.max(1, retryCount);
+    // Exponential backoff: base * 2^(attempt-1)
+    const backoff = base * Math.pow(2, attempt - 1);
+    // Random jitter: 0 ~ base
+    const jitter = Math.floor(Math.random() * base);
+    const delayMs = backoff + jitter;
+    // Cap at max delay
+    return Math.min(AUTO_RETRY_MAX_DELAY_MS, delayMs);
+  }
+
+  private handleTaskFailure(task: Task, duration?: number): { scheduled: boolean; delayMs?: number } {
+    const currentRetryCount = task.retryCount ?? 0;
+    const canRetry =
+      this.autoRetryConfig.enabled &&
+      this.autoRetryConfig.maxRetries > 0 &&
+      currentRetryCount < this.autoRetryConfig.maxRetries;
+
+    if (canRetry) {
+      const nextRetryCount = currentRetryCount + 1;
+      task.retryCount = nextRetryCount;
+      const delayMs = this.computeRetryDelayMs(nextRetryCount);
+      task.nextRetryAt = Date.now() + delayMs;
+      this.setTaskStatus(task, 'failed', duration);
+      // Do not cascade failure - retry is scheduled
+      return { scheduled: true, delayMs };
+    }
+
+    // Retry exhausted - cascade failure
+    task.nextRetryAt = undefined;
+    this.setTaskStatus(task, 'failed', duration);
+    this.cascadeFailure(task.id);
+    return { scheduled: false };
+  }
+
+  private promoteDueRetries(): void {
+    const now = Date.now();
+    for (const task of this.tasks.values()) {
+      if (task.status !== 'failed') continue;
+      if (task.nextRetryAt === undefined) continue;
+      if (task.nextRetryAt > now) continue;
+      // Check not locked by another worker
+      if (this.taskLocks.has(task.id)) continue;
+
+      // Due for retry - promote to ready or pending
+      task.nextRetryAt = undefined;
+      const nextStatus = this.canExecute(task, this.tasks) ? 'ready' : 'pending';
+      this.setTaskStatus(task, nextStatus);
+    }
+  }
+
+  private hasPendingRetries(): boolean {
+    for (const task of this.tasks.values()) {
+      if (task.status === 'failed' && task.nextRetryAt !== undefined) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private cascadeFailure(failedTaskId: string): void {
@@ -460,7 +586,9 @@ export class Scheduler extends EventEmitter {
           taskId: task.id,
           status,
           duration: task.duration,
-          workerId: task.workerId
+          workerId: task.workerId,
+          retryCount: task.retryCount ?? 0,
+          nextRetryAt: task.nextRetryAt ?? null
         }
       });
     }
@@ -552,12 +680,23 @@ export class Scheduler extends EventEmitter {
     // Lock task immediately to prevent duplicate scheduling
     if (!this.lockTask(assignedTaskId, workerId)) return;
 
+    // Build startup message, inject issues for integration tasks
+    let startupContent = `/auto-dev --task ${assignedTaskId} --file "${this.filePath}"`;
+
+    if (this.isIntegrationTask(assignedTaskId)) {
+      const openIssues = this.getOpenIssues();
+      if (openIssues.length > 0) {
+        const issuesSummary = this.formatIssuesForInjection(openIssues);
+        startupContent = `${startupContent}\n\n${issuesSummary}`;
+      }
+    }
+
     const config: ClaudeWorkerConfig = {
       workerId,
       assignedTaskId,
       startupMessage: {
         type: 'user',
-        message: { role: 'user', content: `/auto-dev --task ${assignedTaskId} --file "${this.filePath}"` }
+        message: { role: 'user', content: startupContent }
       },
       autoKillOnComplete: true
     };
@@ -653,14 +792,30 @@ export class Scheduler extends EventEmitter {
       const task = this.tasks.get(taskId);
       if (task) {
         const duration = Math.round(durationMs / 1000);
-        this.setTaskStatus(task, success ? 'success' : 'failed', duration);
         if (success) {
+          // Clear retry state on success
+          task.retryCount = 0;
+          task.nextRetryAt = undefined;
+          this.setTaskStatus(task, 'success', duration);
           // Update checkbox in AUTO-DEV.md (queued for thread safety)
           void updateTaskCheckbox(this.filePath, taskId, true).catch(err => {
             console.error(`[Scheduler] Failed to update checkbox for ${taskId}:`, err);
           });
         } else {
-          this.cascadeFailure(taskId);
+          const result = this.handleTaskFailure(task, duration);
+          if (result.scheduled) {
+            const entry: LogEntry = {
+              ts: new Date().toISOString().slice(11, 19),
+              type: 'system',
+              content: `Auto-retry scheduled (${task.retryCount}/${this.autoRetryConfig.maxRetries}) in ${Math.round(result.delayMs! / 1000)}s`
+            };
+            wrapper.logs.push(entry);
+            this.emitEvent({
+              type: 'workerLog',
+              payload: { workerId, taskId, entry }
+            });
+            void this.logManager.appendLog(taskId, entry);
+          }
         }
       }
 
@@ -680,6 +835,13 @@ export class Scheduler extends EventEmitter {
     worker.on('error', (err) => {
       if (isStale()) return;
       this.handleWorkerError(wrapper, err);
+    });
+
+    worker.on('issueReported', (raw, taskId, wId) => {
+      if (isStale()) return;
+      const reporterTaskId = taskId || wrapper.assignedTaskId;
+      const reporterWorkerId = wId ?? workerId;
+      this.addIssue(raw, reporterTaskId, reporterWorkerId);
     });
   }
 
@@ -703,8 +865,8 @@ export class Scheduler extends EventEmitter {
     if (this.taskLocks.get(taskId) === wrapper.id) {
       const task = this.tasks.get(taskId);
       if (task && task.status === 'running') {
-        this.setTaskStatus(task, 'failed');
-        this.cascadeFailure(taskId);
+        const duration = Math.round((Date.now() - wrapper.startMs) / 1000);
+        this.handleTaskFailure(task, duration);
       }
       void this.logManager.endTaskLog(taskId);
       this.unlockTask(taskId);
@@ -767,6 +929,184 @@ export class Scheduler extends EventEmitter {
   }
 
   // --------------------------------------------------------------------------
+  // Issue Management
+  // --------------------------------------------------------------------------
+
+  private getIssueList(): Issue[] {
+    return [...this.issues.values()].sort((a, b) => {
+      // Sort by severity (blocker > error > warning), then by createdAt
+      const severityOrder = { blocker: 0, error: 1, warning: 2 };
+      const aSev = severityOrder[a.severity] ?? 3;
+      const bSev = severityOrder[b.severity] ?? 3;
+      if (aSev !== bSev) return aSev - bSev;
+      return a.createdAt.localeCompare(b.createdAt);
+    });
+  }
+
+  private computeDedupKey(raw: RawIssueReport): string {
+    // Use signature if available, otherwise hash title + files (NOT severity)
+    if (raw.signature) {
+      return createHash('sha1')
+        .update(JSON.stringify(['sig', raw.signature.trim()]))
+        .digest('hex')
+        .slice(0, 12);
+    }
+
+    // Normalize files: trim, dedup, sort
+    const normalizedFiles = Array.from(
+      new Set(raw.files.map(f => f.trim()).filter(f => f.length > 0))
+    ).sort();
+
+    return createHash('sha1')
+      .update(JSON.stringify(['titleFiles', raw.title.trim(), normalizedFiles]))
+      .digest('hex')
+      .slice(0, 12);
+  }
+
+  private addIssue(raw: RawIssueReport, reporterTaskId: string, reporterWorkerId: number): Issue {
+    const dedupKey = this.computeDedupKey(raw);
+    const existing = this.issues.get(dedupKey);
+
+    if (existing) {
+      // Merge as occurrence: increment count, keep highest severity
+      existing.occurrences++;
+      const severityOrder = { warning: 0, error: 1, blocker: 2 };
+      if (severityOrder[raw.severity] > severityOrder[existing.severity]) {
+        existing.severity = raw.severity;
+      }
+
+      // Re-open if previously fixed (but keep 'ignored' as ignored)
+      if (existing.status === 'fixed') {
+        existing.status = 'open';
+      }
+
+      // Merge missing optional fields
+      if (!existing.ownerTaskId && raw.ownerTaskId) {
+        existing.ownerTaskId = raw.ownerTaskId || undefined;
+      }
+      if (!existing.signature && raw.signature) {
+        existing.signature = raw.signature;
+      }
+      if (!existing.details && raw.details) {
+        existing.details = raw.details;
+      }
+
+      // Union file lists
+      const fileSet = new Set(existing.files.map(f => f.trim()).filter(f => f.length > 0));
+      for (const f of raw.files) {
+        const trimmed = f.trim();
+        if (trimmed) fileSet.add(trimmed);
+      }
+      existing.files = [...fileSet];
+
+      // Emit upsert so frontend can refresh occurrences/severity
+      this.emitEvent({ type: 'issueReported', payload: { issue: existing } });
+      return existing;
+    }
+
+    // Create new issue with normalized data
+    const normalizedFiles = Array.from(
+      new Set(raw.files.map(f => f.trim()).filter(f => f.length > 0))
+    );
+
+    const issue: Issue = {
+      id: dedupKey,
+      createdAt: new Date().toISOString(),
+      reporterTaskId,
+      reporterWorkerId,
+      ownerTaskId: raw.ownerTaskId || undefined,
+      severity: raw.severity,
+      title: raw.title.trim(),
+      details: raw.details?.trim() || undefined,
+      files: normalizedFiles,
+      signature: raw.signature?.trim() || undefined,
+      status: 'open',
+      occurrences: 1
+    };
+
+    this.issues.set(dedupKey, issue);
+    this.emitEvent({ type: 'issueReported', payload: { issue } });
+    return issue;
+  }
+
+  updateIssueStatus(issueId: string, status: IssueStatus): boolean {
+    const issue = this.issues.get(issueId);
+    if (!issue) return false;
+
+    issue.status = status;
+    this.emitEvent({ type: 'issueUpdate', payload: { issueId, status } });
+    return true;
+  }
+
+  getOpenIssues(): Issue[] {
+    return [...this.issues.values()].filter(i => i.status === 'open');
+  }
+
+  getOpenBlockers(): Issue[] {
+    return this.getOpenIssues().filter(i => i.severity === 'blocker');
+  }
+
+  private isIntegrationTask(taskId: string): boolean {
+    const id = taskId.toUpperCase();
+    // Match: INT-*, INTEGRATION*, FIX-WAVE*, or exact "INTEGRATION"
+    return (
+      id.startsWith('INT-') ||
+      id.startsWith('INTEGRATION') ||
+      id.startsWith('FIX-WAVE') ||
+      id === 'INTEGRATION'
+    );
+  }
+
+  private formatIssuesForInjection(issues: Issue[]): string {
+    const lines: string[] = [
+      '---',
+      '## 📋 Collected Issues Report (Auto-injected)',
+      '',
+      `Total: ${issues.length} open issue(s) to address.`,
+      ''
+    ];
+
+    // Group by severity
+    const blockers = issues.filter(i => i.severity === 'blocker');
+    const errors = issues.filter(i => i.severity === 'error');
+    const warnings = issues.filter(i => i.severity === 'warning');
+
+    if (blockers.length > 0) {
+      lines.push('### 🚨 Blockers (Must Fix)');
+      for (const issue of blockers) {
+        lines.push(this.formatSingleIssue(issue));
+      }
+      lines.push('');
+    }
+
+    if (errors.length > 0) {
+      lines.push('### ❌ Errors');
+      for (const issue of errors) {
+        lines.push(this.formatSingleIssue(issue));
+      }
+      lines.push('');
+    }
+
+    if (warnings.length > 0) {
+      lines.push('### ⚠️ Warnings');
+      for (const issue of warnings) {
+        lines.push(this.formatSingleIssue(issue));
+      }
+      lines.push('');
+    }
+
+    lines.push('---');
+    return lines.join('\n');
+  }
+
+  private formatSingleIssue(issue: Issue): string {
+    const files = issue.files.length > 0 ? ` (${issue.files.join(', ')})` : '';
+    const owner = issue.ownerTaskId ? ` [Owner: ${issue.ownerTaskId}]` : '';
+    const details = issue.details ? `\n  Details: ${issue.details}` : '';
+    return `- **${issue.title}**${files}${owner}${details}`;
+  }
+
+  // --------------------------------------------------------------------------
   // Event Emission
   // --------------------------------------------------------------------------
 
@@ -803,6 +1143,8 @@ export interface Scheduler {
   on(event: 'progress', listener: (msg: { type: 'progress'; payload: Progress }) => void): this;
   on(event: 'schedulerState', listener: (msg: { type: 'schedulerState'; payload: SchedulerStatePayload }) => void): this;
   on(event: 'workerState', listener: (msg: { type: 'workerState'; payload: WorkerStatePayload }) => void): this;
+  on(event: 'issueReported', listener: (msg: { type: 'issueReported'; payload: IssueReportedPayload }) => void): this;
+  on(event: 'issueUpdate', listener: (msg: { type: 'issueUpdate'; payload: IssueUpdatePayload }) => void): this;
 
   emit(event: 'fileLoaded', msg: { type: 'fileLoaded'; payload: FileLoadedPayload }): boolean;
   emit(event: 'taskUpdate', msg: { type: 'taskUpdate'; payload: TaskUpdatePayload }): boolean;
@@ -810,4 +1152,6 @@ export interface Scheduler {
   emit(event: 'progress', msg: { type: 'progress'; payload: Progress }): boolean;
   emit(event: 'schedulerState', msg: { type: 'schedulerState'; payload: SchedulerStatePayload }): boolean;
   emit(event: 'workerState', msg: { type: 'workerState'; payload: WorkerStatePayload }): boolean;
+  emit(event: 'issueReported', msg: { type: 'issueReported'; payload: IssueReportedPayload }): boolean;
+  emit(event: 'issueUpdate', msg: { type: 'issueUpdate'; payload: IssueUpdatePayload }): boolean;
 }

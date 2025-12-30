@@ -8,6 +8,9 @@ import type {
   LogEntry,
   Progress,
   SchedulerFullState,
+  Issue,
+  IssueStatus,
+  AutoRetryConfig,
 } from './types';
 
 // =============================================================================
@@ -25,6 +28,8 @@ export interface IpcTaskUpdatePayload {
   status: TaskStatus;
   duration?: number;
   workerId?: number;
+  retryCount?: number;
+  nextRetryAt?: number | null;
 }
 
 export interface IpcWorkerLogPayload {
@@ -57,6 +62,15 @@ export interface IpcWorkerHealthWarningPayload {
   reason: string;
 }
 
+export interface IpcIssueReportedPayload {
+  issue: Issue;
+}
+
+export interface IpcIssueUpdatePayload {
+  issueId: string;
+  status: IssueStatus;
+}
+
 export interface WatchdogConfigPayload {
   checkIntervalMs: number;
   activityTimeoutMs: number;
@@ -68,6 +82,8 @@ export interface WatchdogConfigPayload {
     default: number;
   };
 }
+
+export interface AutoRetryConfigPayload extends AutoRetryConfig {}
 
 // =============================================================================
 // Electron API Interface
@@ -100,6 +116,13 @@ export interface ElectronAPI {
   getWatchdogConfig: () => Promise<WatchdogConfigPayload>;
   setWatchdogConfig: (config: Partial<WatchdogConfigPayload>) => Promise<void>;
 
+  // Auto-Retry Config
+  getAutoRetryConfig: () => Promise<AutoRetryConfigPayload>;
+  setAutoRetryConfig: (config: Partial<AutoRetryConfigPayload>) => Promise<void>;
+
+  // Issue Commands
+  updateIssueStatus: (issueId: string, status: IssueStatus) => Promise<void>;
+
   // Event Subscriptions (returns unsubscribe function)
   onFileLoaded: (callback: (payload: IpcFileLoadedPayload) => void) => () => void;
   onTaskUpdate: (callback: (payload: IpcTaskUpdatePayload) => void) => () => void;
@@ -109,6 +132,8 @@ export interface ElectronAPI {
   onWorkerStateChange: (callback: (payload: IpcWorkerStatePayload) => void) => () => void;
   onFullState: (callback: (payload: IpcFullStatePayload) => void) => () => void;
   onWorkerHealthWarning: (callback: (payload: IpcWorkerHealthWarningPayload) => void) => () => void;
+  onIssueReported: (callback: (payload: IpcIssueReportedPayload) => void) => () => void;
+  onIssueUpdate: (callback: (payload: IpcIssueUpdatePayload) => void) => () => void;
 }
 
 // =============================================================================

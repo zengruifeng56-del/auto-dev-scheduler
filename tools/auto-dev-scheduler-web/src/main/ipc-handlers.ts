@@ -7,11 +7,13 @@ import path from 'node:path';
 
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 import type { Scheduler } from './scheduler-service';
+import type { SettingsStore } from './settings-store';
 import type { Watchdog, WatchdogConfig } from './watchdog';
 
 export interface RegisterIpcHandlersOptions {
   scheduler: Scheduler;
   watchdog?: Watchdog;
+  settingsStore?: SettingsStore;
   getWebContents: () => WebContents[];
 }
 
@@ -41,7 +43,7 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions): void {
   if (registered) return;
   registered = true;
 
-  const { scheduler, watchdog, getWebContents } = options;
+  const { scheduler, watchdog, settingsStore, getWebContents } = options;
 
   const emitFullState = (): void => {
     broadcast(getWebContents, IPC_CHANNELS.EVENT_FULL_STATE, scheduler.getState());
@@ -216,6 +218,9 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions): void {
   ipcMain.handle(IPC_CHANNELS.WATCHDOG_SET_CONFIG, async (_event, config: Partial<WatchdogConfig> | undefined) => {
     if (!watchdog || !config) return;
     watchdog.updateConfig(config);
+    if (settingsStore) {
+      await settingsStore.update({ watchdog: watchdog.getConfig() });
+    }
   });
 
   // --------------------------------------------------------------------------
@@ -238,5 +243,26 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions): void {
       partial.baseDelayMs = cfg.baseDelayMs;
     }
     scheduler.updateAutoRetryConfig(partial);
+    if (settingsStore) {
+      await settingsStore.update({ autoRetry: scheduler.getAutoRetryConfig() });
+    }
+  });
+
+  // --------------------------------------------------------------------------
+  // Scheduler Blocker Config Handlers
+  // --------------------------------------------------------------------------
+
+  ipcMain.handle(IPC_CHANNELS.SCHEDULER_GET_BLOCKER_CONFIG, async () => {
+    return { blockerAutoPauseEnabled: scheduler.getBlockerAutoPauseEnabled() };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.SCHEDULER_SET_BLOCKER_CONFIG, async (_event, config: { blockerAutoPauseEnabled?: unknown } | undefined) => {
+    if (!config) return;
+    if (typeof config.blockerAutoPauseEnabled === 'boolean') {
+      scheduler.setBlockerAutoPauseEnabled(config.blockerAutoPauseEnabled);
+      if (settingsStore) {
+        await settingsStore.update({ scheduler: { blockerAutoPauseEnabled: config.blockerAutoPauseEnabled } });
+      }
+    }
   });
 }

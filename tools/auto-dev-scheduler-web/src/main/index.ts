@@ -2,6 +2,18 @@
  * Electron Main Process Entry - 简化版
  * Auto-Dev Scheduler 主进程入口
  */
+
+// Prevent EPIPE errors from crashing the app in GUI mode (no console)
+// This must be done before any console.log calls
+process.stdout?.on?.('error', (err) => {
+  if ((err as NodeJS.ErrnoException).code === 'EPIPE') return;
+  throw err;
+});
+process.stderr?.on?.('error', (err) => {
+  if ((err as NodeJS.ErrnoException).code === 'EPIPE') return;
+  throw err;
+});
+
 import { app, BrowserWindow, Menu } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -9,6 +21,7 @@ import { fileURLToPath } from 'url';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 import { registerIpcHandlers } from './ipc-handlers';
 import { Scheduler } from './scheduler-service';
+import { SettingsStore } from './settings-store';
 import { Watchdog } from './watchdog';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -24,6 +37,8 @@ const watchdog = new Watchdog({
     }
   }
 });
+
+const settingsStore = new SettingsStore();
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -127,12 +142,24 @@ if (!gotTheLock) {
     }
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     createMenu();
+
+    // Load persisted settings
+    try {
+      const settings = await settingsStore.load();
+      watchdog.updateConfig(settings.watchdog);
+      scheduler.updateAutoRetryConfig(settings.autoRetry);
+      scheduler.setBlockerAutoPauseEnabled(settings.scheduler.blockerAutoPauseEnabled);
+      console.log('[settings] Loaded settings from disk');
+    } catch (err: unknown) {
+      console.warn('[settings] Failed to load settings:', err);
+    }
 
     registerIpcHandlers({
       scheduler,
       watchdog,
+      settingsStore,
       getWebContents: () => (mainWindow ? [mainWindow.webContents] : [])
     });
 

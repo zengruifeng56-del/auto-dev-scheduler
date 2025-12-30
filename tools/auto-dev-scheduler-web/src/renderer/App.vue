@@ -7,6 +7,8 @@ import StatusBar from './components/StatusBar.vue';
 import TaskTable from './components/TaskTable.vue';
 import LogPanel from './components/LogPanel.vue';
 import IssuesPanel from './components/IssuesPanel.vue';
+import BlockerOverlay from './components/BlockerOverlay.vue';
+import PhaseTimeline from './components/PhaseTimeline.vue';
 
 const store = useSchedulerStore();
 const ipcReady = computed(() => store.ipcReady);
@@ -75,6 +77,7 @@ onUnmounted(() => {
       <!-- 2. Status Bar -->
       <section class="section-status">
         <StatusBar />
+        <PhaseTimeline />
       </section>
 
       <!-- 3. Task Table (Flexible Height) -->
@@ -106,6 +109,9 @@ onUnmounted(() => {
         </div>
       </section>
     </main>
+
+    <!-- Global Overlays -->
+    <BlockerOverlay />
   </div>
 </template>
 

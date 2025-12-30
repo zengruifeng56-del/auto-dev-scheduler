@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed, toRaw } from 'vue';
 import { Setting } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import type { WatchdogConfigPayload, AutoRetryConfigPayload } from '../../shared/electron-api.d';
+
+// Vue 3 ref() 创建的是 Proxy 对象，Electron IPC 的 structured clone 无法序列化 Proxy
+// 必须在调用 IPC 前转换为普通对象
+function cloneForIpc<T>(value: T): T {
+  return JSON.parse(JSON.stringify(toRaw(value))) as T;
+}
 
 const visible = ref(false);
 const loading = ref(false);
@@ -24,6 +30,8 @@ const autoRetryConfig = ref<AutoRetryConfigPayload>({
   maxRetries: 2,
   baseDelayMs: 5_000
 });
+
+const blockerAutoPauseEnabled = ref(true);
 
 // Convert ms to minutes for display
 const checkIntervalMinutes = computed({
@@ -70,12 +78,14 @@ const baseDelaySeconds = computed({
 const loadConfig = async () => {
   loading.value = true;
   try {
-    const [watchdogLoaded, retryLoaded] = await Promise.all([
+    const [watchdogLoaded, retryLoaded, blockerLoaded] = await Promise.all([
       window.electronAPI.getWatchdogConfig(),
-      window.electronAPI.getAutoRetryConfig()
+      window.electronAPI.getAutoRetryConfig(),
+      window.electronAPI.getBlockerConfig()
     ]);
     config.value = watchdogLoaded;
     autoRetryConfig.value = retryLoaded;
+    blockerAutoPauseEnabled.value = blockerLoaded.blockerAutoPauseEnabled;
   } catch {
     ElMessage.error('加载配置失败');
   } finally {
@@ -87,13 +97,15 @@ const saveConfig = async () => {
   loading.value = true;
   try {
     await Promise.all([
-      window.electronAPI.setWatchdogConfig(config.value),
-      window.electronAPI.setAutoRetryConfig(autoRetryConfig.value)
+      window.electronAPI.setWatchdogConfig(cloneForIpc(config.value)),
+      window.electronAPI.setAutoRetryConfig(cloneForIpc(autoRetryConfig.value)),
+      window.electronAPI.setBlockerConfig({ blockerAutoPauseEnabled: blockerAutoPauseEnabled.value })
     ]);
     ElMessage.success('配置已保存');
     visible.value = false;
-  } catch {
-    ElMessage.error('保存配置失败');
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    ElMessage.error(`保存配置失败: ${message}`);
   } finally {
     loading.value = false;
   }
@@ -148,6 +160,15 @@ watch(visible, (v) => {
         />
         <span class="unit">秒</span>
         <el-tooltip content="指数退避：第N次重试延迟 = 基础延迟 × 2^(N-1) + 随机抖动">
+          <el-icon class="help-icon"><QuestionFilled /></el-icon>
+        </el-tooltip>
+      </el-form-item>
+
+      <el-divider content-position="left">调度器</el-divider>
+
+      <el-form-item label="Blocker自动暂停">
+        <el-switch v-model="blockerAutoPauseEnabled" />
+        <el-tooltip content="发现 blocker 级别问题时自动暂停调度（已运行的任务会继续完成）">
           <el-icon class="help-icon"><QuestionFilled /></el-icon>
         </el-tooltip>
       </el-form-item>

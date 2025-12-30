@@ -94,6 +94,14 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.invoke(IPC_CHANNELS.AUTO_RETRY_SET_CONFIG, config),
 
   // ==========================================================================
+  // Scheduler Blocker Config
+  // ==========================================================================
+  getBlockerConfig: () => ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_GET_BLOCKER_CONFIG),
+
+  setBlockerConfig: (config: { blockerAutoPauseEnabled: boolean }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SCHEDULER_SET_BLOCKER_CONFIG, config),
+
+  // ==========================================================================
   // Issue Commands
   // ==========================================================================
   updateIssueStatus: (issueId: string, status: IssueStatus) =>

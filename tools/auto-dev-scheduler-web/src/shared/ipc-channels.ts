@@ -34,6 +34,10 @@ export const IPC_CHANNELS = {
   AUTO_RETRY_GET_CONFIG: 'autoRetry:getConfig',
   AUTO_RETRY_SET_CONFIG: 'autoRetry:setConfig',
 
+  // Scheduler Config (Renderer → Main)
+  SCHEDULER_GET_BLOCKER_CONFIG: 'scheduler:getBlockerConfig',
+  SCHEDULER_SET_BLOCKER_CONFIG: 'scheduler:setBlockerConfig',
+
   // Issue Commands (Renderer → Main)
   ISSUE_UPDATE_STATUS: 'issue:updateStatus',
 

@@ -186,6 +186,22 @@ claude --version
 
 ## 更新日志
 
+### v1.4.0 (2024-12)
+
+**新功能**
+- 会话持久化：Issue、任务状态、暂停原因跨会话保存，重启后自动恢复
+- 设置持久化：Watchdog、AutoRetry 配置跨项目保存到 userData
+- Blocker 自动暂停：检测到 blocker 级别问题时自动暂停，显示模态弹窗提示
+- 暂停原因追踪：区分用户手动暂停和 blocker 自动暂停
+
+**Bug 修复**
+- 修复 Windows GUI 模式下 EPIPE 崩溃：console.log 写入已关闭的 stdout 管道导致应用崩溃
+- 添加全局 EPIPE 错误处理：防止 stdout/stderr 管道断开时崩溃
+
+**改进**
+- Settings 对话框新增 Blocker 自动暂停开关
+- 状态栏显示暂停原因（用户/blocker）
+
 ### v1.3.0 (2024-12)
 
 **新功能**

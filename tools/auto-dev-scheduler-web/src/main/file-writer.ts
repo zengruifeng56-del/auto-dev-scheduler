@@ -7,6 +7,15 @@
 
 import { promises as fs } from 'node:fs';
 
+// Safe logging to prevent EPIPE errors in GUI mode (no console)
+function safeLog(level: 'log' | 'warn', ...args: unknown[]): void {
+  try {
+    console[level](...args);
+  } catch {
+    // Ignore EPIPE and other console errors in GUI mode
+  }
+}
+
 type WriteTask = {
   filePath: string;
   operation: () => Promise<void>;
@@ -84,7 +93,7 @@ export async function updateTaskCheckbox(
 
     const match = content.match(taskHeaderPattern);
     if (!match) {
-      console.warn(`[FileWriter] Task ${taskId} checkbox not found in ${filePath}`);
+      safeLog('warn', `[FileWriter] Task ${taskId} checkbox not found in ${filePath}`);
       return;
     }
 
@@ -102,7 +111,7 @@ export async function updateTaskCheckbox(
     );
 
     await fs.writeFile(filePath, updated, 'utf-8');
-    console.log(`[FileWriter] Updated ${taskId} checkbox to [${newMark}]`);
+    safeLog('log', `[FileWriter] Updated ${taskId} checkbox to [${newMark}]`);
   });
 }
 

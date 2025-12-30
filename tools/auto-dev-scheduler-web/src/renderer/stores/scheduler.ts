@@ -7,6 +7,7 @@ import type {
   ServerMessage,
   Issue,
   IssueStatus,
+  SchedulerPauseReason,
 } from '@shared/types';
 
 let ipcUnsubscribers: Array<() => void> = [];
@@ -24,6 +25,7 @@ export const useSchedulerStore = defineStore('scheduler', {
     // Scheduler state
     running: false,
     paused: false,
+    pausedReason: null as SchedulerPauseReason | null,
     tasks: [] as Task[],
     workers: new Map<number, WorkerState>(),
     progress: { completed: 0, total: 0 } as Progress,
@@ -225,11 +227,13 @@ export const useSchedulerStore = defineStore('scheduler', {
         case 'schedulerState':
           this.running = msg.payload.running;
           this.paused = msg.payload.paused;
+          this.pausedReason = msg.payload.pausedReason ?? null;
           break;
 
         case 'fullState':
           this.running = msg.payload.running;
           this.paused = msg.payload.paused;
+          this.pausedReason = msg.payload.pausedReason ?? null;
           this.filePath = msg.payload.filePath;
           this.projectRoot = msg.payload.projectRoot;
           this.tasks = msg.payload.tasks;

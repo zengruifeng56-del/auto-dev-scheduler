@@ -13,6 +13,11 @@ import { ClaudeWorker, type ClaudeWorkerConfig, type RawIssueReport } from './cl
 import { updateTaskCheckbox } from './file-writer';
 import { LogManager } from './log-manager';
 import { inferProjectRoot, parseAutoDevFile } from './parser';
+import {
+  SchedulerSessionStore,
+  type SchedulerSessionSnapshot,
+  type SchedulerPauseReason
+} from './scheduler-session-store';
 import type {
   AutoRetryConfig,
   Issue,
@@ -23,6 +28,8 @@ import type {
   TaskStatus,
   WorkerState
 } from '../shared/types';
+
+export type { SchedulerPauseReason } from './scheduler-session-store';
 
 // ============================================================================
 // Event Payload Types
@@ -52,6 +59,7 @@ export interface WorkerLogPayload {
 export interface SchedulerStatePayload {
   running: boolean;
   paused: boolean;
+  pausedReason?: SchedulerPauseReason | null;
 }
 
 export interface WorkerStatePayload {
@@ -74,12 +82,18 @@ export interface IssueUpdatePayload {
 export interface SchedulerState {
   running: boolean;
   paused: boolean;
+  pausedReason?: SchedulerPauseReason | null;
   filePath: string;
   projectRoot: string;
   tasks: Task[];
   workers: WorkerState[];
   progress: Progress;
   issues: Issue[];
+}
+
+export interface BlockerAutoPausePayload {
+  issue: Issue;
+  openBlockers: number;
 }
 
 type EventPayload =
@@ -90,7 +104,8 @@ type EventPayload =
   | { type: 'schedulerState'; payload: SchedulerStatePayload }
   | { type: 'workerState'; payload: WorkerStatePayload }
   | { type: 'issueReported'; payload: IssueReportedPayload }
-  | { type: 'issueUpdate'; payload: IssueUpdatePayload };
+  | { type: 'issueUpdate'; payload: IssueUpdatePayload }
+  | { type: 'blockerAutoPause'; payload: BlockerAutoPausePayload };
 
 // ============================================================================
 // Worker Wrapper
@@ -168,12 +183,24 @@ export class Scheduler extends EventEmitter {
   // Auto-retry config
   private autoRetryConfig: AutoRetryConfig = { ...DEFAULT_AUTO_RETRY_CONFIG };
 
+  // Blocker auto-pause
+  private blockerAutoPauseEnabled = true;
+  private pauseReason: SchedulerPauseReason | null = null;
+
+  // Session persistence
+  private readonly sessionStore = new SchedulerSessionStore();
+  private persistTimer: NodeJS.Timeout | null = null;
+  private persistNonce = 0;
+
   // --------------------------------------------------------------------------
   // Public API
   // --------------------------------------------------------------------------
 
-  async loadFile(filePath: string): Promise<void> {
+  async loadFile(filePath: string, options: { ignoreSession?: boolean } = {}): Promise<void> {
     await this.stop();
+
+    this.persistNonce++;
+    this.clearPersistTimer();
 
     this.filePath = filePath;
     this.projectRoot = inferProjectRoot(filePath);
@@ -199,6 +226,11 @@ export class Scheduler extends EventEmitter {
       }
     }
 
+    // Hydrate from session store (issues, task runtime state)
+    if (!options.ignoreSession) {
+      await this.hydrateFromSessionStore();
+    }
+
     this.emitEvent({
       type: 'fileLoaded',
       payload: {
@@ -209,6 +241,7 @@ export class Scheduler extends EventEmitter {
     });
 
     this.emitProgress();
+    this.requestPersist('loadFile');
   }
 
   start(maxParallel = 1): void {
@@ -218,8 +251,10 @@ export class Scheduler extends EventEmitter {
     this.maxParallel = Math.min(Math.max(1, maxParallel), CONFIG.maxParallel);
     this.running = true;
     this.paused = false;
+    this.pauseReason = null;
 
-    this.emitEvent({ type: 'schedulerState', payload: { running: true, paused: false } });
+    this.emitEvent({ type: 'schedulerState', payload: { running: true, paused: false, pausedReason: null } });
+    this.requestPersist('start');
     this.ensureTickTimer();
     void this.tick('start');
   }
@@ -227,19 +262,33 @@ export class Scheduler extends EventEmitter {
   pause(): void {
     if (!this.running || this.paused) return;
     this.paused = true;
-    this.emitEvent({ type: 'schedulerState', payload: { running: true, paused: true } });
+    this.pauseReason = 'user';
+    this.emitEvent({ type: 'schedulerState', payload: { running: true, paused: true, pausedReason: 'user' } });
+    this.requestPersist('pause');
   }
 
   resume(): void {
     if (!this.running || !this.paused) return;
+
+    // Check for open blockers before resuming
+    if (this.blockerAutoPauseEnabled && this.getOpenBlockers().length > 0) {
+      this.pauseReason = 'blocker';
+      this.emitEvent({ type: 'schedulerState', payload: { running: true, paused: true, pausedReason: 'blocker' } });
+      return;
+    }
+
     this.paused = false;
-    this.emitEvent({ type: 'schedulerState', payload: { running: true, paused: false } });
+    this.pauseReason = null;
+    this.emitEvent({ type: 'schedulerState', payload: { running: true, paused: false, pausedReason: null } });
+    this.requestPersist('resume');
     void this.tick('resume');
   }
 
   async stop(): Promise<void> {
+    this.clearPersistTimer();
     this.running = false;
     this.paused = false;
+    this.pauseReason = null;
     this.stopTickTimer();
 
     // Archive logs and kill all workers
@@ -268,14 +317,16 @@ export class Scheduler extends EventEmitter {
     this.taskLocks.clear();
     this.workers.clear();
 
-    this.emitEvent({ type: 'schedulerState', payload: { running: false, paused: false } });
+    this.emitEvent({ type: 'schedulerState', payload: { running: false, paused: false, pausedReason: null } });
     this.emitProgress();
+    await this.persistNow('stop');
   }
 
   getState(): SchedulerState {
     return {
       running: this.running,
       paused: this.paused,
+      pausedReason: this.pauseReason,
       filePath: this.filePath,
       projectRoot: this.projectRoot,
       tasks: this.getTaskList(),
@@ -1026,6 +1077,8 @@ export class Scheduler extends EventEmitter {
 
     this.issues.set(dedupKey, issue);
     this.emitEvent({ type: 'issueReported', payload: { issue } });
+    this.requestPersist('issueReported');
+    this.handleBlockerAutoPause();
     return issue;
   }
 
@@ -1035,6 +1088,7 @@ export class Scheduler extends EventEmitter {
 
     issue.status = status;
     this.emitEvent({ type: 'issueUpdate', payload: { issueId, status } });
+    this.requestPersist('issueUpdate');
     return true;
   }
 
@@ -1104,6 +1158,153 @@ export class Scheduler extends EventEmitter {
     const owner = issue.ownerTaskId ? ` [Owner: ${issue.ownerTaskId}]` : '';
     const details = issue.details ? `\n  Details: ${issue.details}` : '';
     return `- **${issue.title}**${files}${owner}${details}`;
+  }
+
+  // --------------------------------------------------------------------------
+  // Session Persistence
+  // --------------------------------------------------------------------------
+
+  private clearPersistTimer(): void {
+    if (!this.persistTimer) return;
+    clearTimeout(this.persistTimer);
+    this.persistTimer = null;
+  }
+
+  private requestPersist(reason: string): void {
+    if (!this.filePath) return;
+    if (this.persistTimer) return;
+
+    const nonce = this.persistNonce;
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      if (nonce !== this.persistNonce) return;
+      void this.persistNow(`debounce:${reason}`);
+    }, 750);
+    this.persistTimer.unref?.();
+  }
+
+  private async persistNow(reason: string): Promise<void> {
+    if (!this.filePath) return;
+
+    const snapshot = this.buildSessionSnapshot();
+    try {
+      await this.sessionStore.writeSnapshot(this.filePath, snapshot);
+    } catch (err) {
+      console.error(`[Scheduler] Failed to persist session (${reason}):`, err);
+    }
+  }
+
+  private buildSessionSnapshot(): SchedulerSessionSnapshot {
+    const taskStates: SchedulerSessionSnapshot['taskStates'] = {};
+    for (const task of this.tasks.values()) {
+      taskStates[task.id] = {
+        status: task.status,
+        duration: task.duration,
+        startTime: task.startTime,
+        endTime: task.endTime,
+        retryCount: task.retryCount,
+        nextRetryAt: task.nextRetryAt
+      };
+    }
+
+    return {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      filePath: this.filePath,
+      projectRoot: this.projectRoot,
+      paused: this.paused,
+      pausedReason: this.pauseReason,
+      autoRetryConfig: { ...this.autoRetryConfig },
+      blockerAutoPauseEnabled: this.blockerAutoPauseEnabled,
+      taskStates,
+      issues: [...this.issues.values()]
+    };
+  }
+
+  private async hydrateFromSessionStore(): Promise<void> {
+    if (!this.filePath) return;
+
+    let snapshot: SchedulerSessionSnapshot | null = null;
+    try {
+      snapshot = await this.sessionStore.readSnapshot(this.filePath);
+    } catch (err) {
+      console.warn('[Scheduler] Failed to read session snapshot:', err);
+      return;
+    }
+    if (!snapshot) return;
+
+    // Verify file path matches (case-insensitive on Windows)
+    const sameFile = process.platform === 'win32'
+      ? snapshot.filePath.toLowerCase() === this.filePath.toLowerCase()
+      : snapshot.filePath === this.filePath;
+    if (!sameFile) return;
+
+    // Restore issues
+    this.issues.clear();
+    for (const issue of snapshot.issues ?? []) {
+      if (!issue || typeof issue.id !== 'string') continue;
+      this.issues.set(issue.id, issue);
+    }
+
+    // Restore task runtime state
+    const now = Date.now();
+    for (const [taskId, st] of Object.entries(snapshot.taskStates ?? {})) {
+      const task = this.tasks.get(taskId);
+      if (!task) continue;
+
+      task.duration = st.duration;
+      task.startTime = st.startTime;
+      task.endTime = st.endTime;
+      task.retryCount = st.retryCount;
+      task.nextRetryAt = st.nextRetryAt;
+
+      // Promote due retries
+      if (task.status === 'failed' && task.nextRetryAt !== undefined && task.nextRetryAt <= now) {
+        task.status = this.canExecute(task, this.tasks) ? 'ready' : 'pending';
+        task.nextRetryAt = undefined;
+      }
+    }
+
+    console.log(`[Scheduler] Restored ${this.issues.size} issues from session`);
+  }
+
+  // --------------------------------------------------------------------------
+  // Blocker Auto-Pause
+  // --------------------------------------------------------------------------
+
+  getBlockerAutoPauseEnabled(): boolean {
+    return this.blockerAutoPauseEnabled;
+  }
+
+  setBlockerAutoPauseEnabled(enabled: boolean): void {
+    this.blockerAutoPauseEnabled = enabled;
+    this.requestPersist('blockerConfig');
+
+    if (enabled && this.running && !this.paused && this.getOpenBlockers().length > 0) {
+      this.handleBlockerAutoPause();
+    }
+  }
+
+  private handleBlockerAutoPause(): void {
+    if (!this.running || !this.blockerAutoPauseEnabled || this.paused) return;
+
+    const blockers = this.getOpenBlockers();
+    if (blockers.length === 0) return;
+
+    this.paused = true;
+    this.pauseReason = 'blocker';
+
+    this.emitEvent({
+      type: 'schedulerState',
+      payload: { running: true, paused: true, pausedReason: 'blocker' }
+    });
+
+    this.emitEvent({
+      type: 'blockerAutoPause',
+      payload: { issue: blockers[0]!, openBlockers: blockers.length }
+    });
+
+    this.requestPersist('blockerAutoPause');
   }
 
   // --------------------------------------------------------------------------

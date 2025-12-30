@@ -85,6 +85,10 @@ export interface WatchdogConfigPayload {
 
 export interface AutoRetryConfigPayload extends AutoRetryConfig {}
 
+export interface BlockerConfigPayload {
+  blockerAutoPauseEnabled: boolean;
+}
+
 // =============================================================================
 // Electron API Interface
 // =============================================================================
@@ -119,6 +123,10 @@ export interface ElectronAPI {
   // Auto-Retry Config
   getAutoRetryConfig: () => Promise<AutoRetryConfigPayload>;
   setAutoRetryConfig: (config: Partial<AutoRetryConfigPayload>) => Promise<void>;
+
+  // Scheduler Blocker Config
+  getBlockerConfig: () => Promise<BlockerConfigPayload>;
+  setBlockerConfig: (config: BlockerConfigPayload) => Promise<void>;
 
   // Issue Commands
   updateIssueStatus: (issueId: string, status: IssueStatus) => Promise<void>;

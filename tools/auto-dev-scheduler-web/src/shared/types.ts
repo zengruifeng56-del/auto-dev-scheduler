@@ -84,10 +84,14 @@ export interface Issue {
   occurrences: number;        // How many times this issue was reported
 }
 
+// Pause reason for UI display
+export type SchedulerPauseReason = 'user' | 'blocker';
+
 // Scheduler full state (for hydration)
 export interface SchedulerFullState {
   running: boolean;
   paused: boolean;
+  pausedReason?: SchedulerPauseReason | null;
   filePath: string;
   projectRoot: string;
   tasks: Task[];
@@ -131,6 +135,7 @@ export interface SchedulerStateMessage {
   payload: {
     running: boolean;
     paused: boolean;
+    pausedReason?: SchedulerPauseReason | null;
   };
 }
 

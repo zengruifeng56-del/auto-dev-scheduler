@@ -2,7 +2,7 @@
  * Electron Main Process Entry - 简化版
  * Auto-Dev Scheduler 主进程入口
  */
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, Menu } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -26,6 +26,53 @@ const watchdog = new Watchdog({
 });
 
 let mainWindow: BrowserWindow | null = null;
+
+function createMenu(): void {
+  const template: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: '文件',
+      submenu: [
+        { label: '退出', accelerator: 'CmdOrCtrl+Q', role: 'quit' }
+      ]
+    },
+    {
+      label: '编辑',
+      submenu: [
+        { label: '撤销', accelerator: 'CmdOrCtrl+Z', role: 'undo' },
+        { label: '重做', accelerator: 'CmdOrCtrl+Shift+Z', role: 'redo' },
+        { type: 'separator' },
+        { label: '剪切', accelerator: 'CmdOrCtrl+X', role: 'cut' },
+        { label: '复制', accelerator: 'CmdOrCtrl+C', role: 'copy' },
+        { label: '粘贴', accelerator: 'CmdOrCtrl+V', role: 'paste' },
+        { label: '全选', accelerator: 'CmdOrCtrl+A', role: 'selectAll' }
+      ]
+    },
+    {
+      label: '视图',
+      submenu: [
+        { label: '重新加载', accelerator: 'CmdOrCtrl+R', role: 'reload' },
+        { label: '强制重新加载', accelerator: 'CmdOrCtrl+Shift+R', role: 'forceReload' },
+        { label: '开发者工具', accelerator: 'CmdOrCtrl+Shift+I', role: 'toggleDevTools' },
+        { type: 'separator' },
+        { label: '实际大小', accelerator: 'CmdOrCtrl+0', role: 'resetZoom' },
+        { label: '放大', accelerator: 'CmdOrCtrl+Plus', role: 'zoomIn' },
+        { label: '缩小', accelerator: 'CmdOrCtrl+-', role: 'zoomOut' },
+        { type: 'separator' },
+        { label: '全屏', accelerator: 'F11', role: 'togglefullscreen' }
+      ]
+    },
+    {
+      label: '窗口',
+      submenu: [
+        { label: '最小化', accelerator: 'CmdOrCtrl+M', role: 'minimize' },
+        { label: '关闭', accelerator: 'CmdOrCtrl+W', role: 'close' }
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
 
 function sendFullStateToRenderer(): void {
   if (!mainWindow) return;
@@ -81,6 +128,8 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(() => {
+    createMenu();
+
     registerIpcHandlers({
       scheduler,
       watchdog,

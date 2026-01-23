@@ -1,6 +1,10 @@
-# Auto-Dev Scheduler
+# Auto-Dev Scheduler (ADS)
 
-基于 OpenSpec 的 Claude 多实例并发开发调度器。
+> **Multi-Claude Parallel Development Orchestrator** 🚀
+>
+> 基于 OpenSpec 规范的智能并发开发调度系统，让多个 Claude 实例协同工作，加速开发流程。
+>
+> **版本**: v2.0 | **License**: MIT | **支持**: Windows / macOS / Linux
 
 > ⚠️ **Token 成本提醒**
 >
@@ -11,25 +15,65 @@
 >
 > 权衡：用更多 Token 换取更快的开发速度。建议合理控制任务粒度，避免拆分过细。
 
-## 核心功能
+## ✨ 核心功能
 
-- **并发执行**：1-4 个 Claude Worker 同时工作
-- **可视化监控**：实时查看任务状态、Worker 日志、Token 消耗
-- **智能调度**：Wave 波次执行 + 依赖管理，自动分配任务
-- **健康监控**：Watchdog 检测卡死进程，支持慢工具超时（codex/gemini/npm）
-- **状态持久化**：任务完成自动更新 AUTO-DEV.md checkbox
+### Phase 4 Claude-First Architecture
 
-## 工作流程
+- **🔀 Claude-First 路由**: 所有任务统一由 Claude 执行，通过 MCP 工具智能委派给 Codex/Gemini
+- **🎯 智能委派**: Claude 根据任务特征自动决定是否调用：
+  - `mcp__codex__codex`: 后端逻辑、算法、Bug 修复
+  - `mcp__gemini__gemini`: 前端 UI、样式、交互设计
+- **📊 ECharts 可视化**: 实时模型分布图、任务进度图表、委派链路追踪
+- **⚡ 并发执行**: 1-4 个 Claude Worker 同时工作，支持 Wave 波次和依赖管理
+- **👁️ 可视化监控**: 实时查看任务状态、Worker 日志、Token 消耗、模型分布
+- **🏥 健康监控**: Watchdog 进程检测、活动超时检测、分层诊断（规则 + AI）
+- **💾 状态持久化**:
+  - 任务完成自动更新 AUTO-DEV.md checkbox
+  - Issue 追踪跨会话保存
+  - Worker 委派历史记录
+- **🛡️ 错误恢复**: API 速率限制处理、指数退避重试、自动恢复机制
+- **🔧 OpenSpec 集成**: 完整支持 proposal → apply → archive 工作流
+
+## 🎯 工作流程
 
 ```
-用户需求 → /openspec:proposal → tasks.md → 转换为 AUTO-DEV.md → /openspec:apply → 调度器执行 → 验收 → /openspec:archive
+┌─────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│  需求分析   │ → │  OpenSpec    │ → │  AUTO-DEV    │ → │  并发执行    │
+│ (User)      │     │  规范化      │     │  生成        │     │  (Scheduler) │
+└─────────────┘     └──────────────┘     └──────────────┘     └──────────────┘
+                           ↓
+                    /openspec:proposal
+                           ↓
+            proposal.md + tasks.md + design.md
+                           ↓
+                      ┌─────────────────┐
+                      │   审核批准      │
+                      │  (Peer Review)  │
+                      └─────────────────┘
+                           ↓
+                   手动转换为 AUTO-DEV.md
+                           ↓
+                    /openspec:apply
+                           ↓
+                  Electron 调度器启动
+                           ↓
+              多 Claude Worker 并发执行
+                           ↓
+                      验收测试 (QA)
+                           ↓
+                    /openspec:archive
+                           ↓
+                    功能归档完成
 ```
 
-**关键步骤说明**：
-1. **Proposal 阶段**: 使用 `/openspec:proposal` 创建 `openspec/changes/{change-id}/tasks.md`（细粒度任务清单）
-2. **转换阶段**: 将 `tasks.md` 按可并行维度重组为 `openspec/execution/{project}/AUTO-DEV.md`（粗粒度并发任务）
-3. **执行阶段**: 使用 `/openspec:apply` 启动调度器并发执行
-4. **归档阶段**: 使用 `/openspec:archive` 归档完成的变更
+### 关键步骤说明
+
+| 步骤 | 命令 | 工件 | 说明 |
+|------|------|------|------|
+| **规范化** | `/openspec:proposal` | proposal.md, tasks.md, design.md | 使用 OpenSpec 规范创建变更提案 |
+| **转换** | 手动/模板 | AUTO-DEV.md | 将细粒度 tasks 转为粗粒度并发任务 |
+| **执行** | `/openspec:apply` | Electron GUI | 启动调度器并发执行 |
+| **归档** | `/openspec:archive` | archive/ | 归档完成的变更到规范库 |
 
 ### 1. 创建提案
 
@@ -202,54 +246,149 @@ Wave 3: REVIEW-SYNC
 - **Element Plus** UI 组件库
 - **Pinia** 状态管理
 
-## 系统要求
+## 📋 系统要求
 
-- **操作系统**: Windows / macOS / Linux
-- **Node.js**: >= 20
-- **Git**: 已安装
-- **Claude CLI**: 已安装并配置（必需）
-- **OpenSpec CLI**: 已安装（必需，用于 proposal/archive 命令）
+### 硬件要求
 
-### Mac 用户注意事项
+| 配置 | 最低 | 推荐 |
+|------|------|------|
+| CPU | 2 核 | 4 核+ |
+| RAM | 4 GB | 8 GB+ |
+| 磁盘 | 500 MB | 2 GB+ |
+| 网络 | 稳定连接 | 高速网络 |
 
-- 使用 `bash` 脚本安装: `curl -fsSL ... | bash`
-- 确保已安装 Command Line Tools: `xcode-select --install`
-- 如使用 M1/M2 芯片，Node.js 需要 arm64 版本
+### 软件要求
 
-### Linux 用户注意事项
+- **操作系统**: Windows 10+ / macOS 12.0+ / Ubuntu 20.04+
+- **Node.js**: >= 20 (推荐 20.10+)
+- **npm**: >= 10.0
+- **Git**: >= 2.30
+- **Claude CLI**: 必需 (最新版本)
+- **OpenSpec CLI**: 必需 (用于 proposal/archive 命令)
 
-- Electron 版调度器仅提供 Windows 二进制，Linux 用户请使用开发模式：`npm run dev`
-- 或编译本地版本：`npm run build`
+### 平台特定说明
 
-## 常见问题
+#### Windows
+- ✅ 完整支持，Electron 应用 + NSIS 安装程序
+- 推荐使用 PowerShell 运行安装脚本
 
-### Q: 调度器无法启动 Claude？
+#### macOS (New in v2.0)
+- ✅ 完整支持，包括 M1/M2 ARM64 芯片
+- 需要 Command Line Tools: `xcode-select --install`
+- 推荐使用 Homebrew: `brew install node openspec`
+- 详见 **MAC_GUIDE.md**
 
-确保 `claude` 命令可用：
+#### Linux (New in v2.0)
+- ✅ 完整支持，多发行版覆盖 (Ubuntu/Debian/Fedora/CentOS/Arch)
+- 支持开发模式和 Docker 容器化部署
+- 支持 Systemd 服务集成（生产环境）
+- 详见 **LINUX_GUIDE.md**
 
+## ❓ 常见问题
+
+### Q1: 调度器无法启动 Claude？
+
+**解决**:
 ```bash
+# 检查 Claude CLI 是否安装
 claude --version
+
+# 检查 API Key 配置
+echo $ANTHROPIC_API_KEY
+
+# 如果都没问题，在调度器设置中重新配置
+# Settings → 输入正确的 claude 命令路径
 ```
 
-### Q: Worker 卡住怎么办？
+### Q2: Worker 卡住或无响应？
 
-点击 Worker 日志面板右上角的 **✕** 按钮终止进程，任务会重置为待执行状态。
+**解决**:
+1. 点击 Worker 日志面板右上角的 **✕** 按钮终止进程
+2. 任务会自动重置为待执行状态
+3. 点击 **重试** 按钮重新执行
+4. 如果频繁卡住，调整超时配置
 
-### Q: 如何调整超时时间？
+### Q3: 如何调整超时时间？
 
-点击调度器界面的 **Settings** 按钮，可配置：
-- 空闲超时（默认 5 分钟）
-- 慢工具超时（codex/gemini 60分钟，npm install 15分钟）
+**操作步骤**:
+1. 点击调度器界面的 **⚙️ Settings** 按钮
+2. 可配置以下项：
+   - **普通操作超时**: 默认 10 分钟
+   - **慢工具超时** (Codex/Gemini): 默认 60 分钟
+   - **npm install 超时**: 默认 15 分钟
+   - **Blocker 自动暂停**: 启用自动暂停
+   - **自动重试**: 启用自动重试（最多 2 次）
 
-### Q: 失败任务如何重试？
+### Q4: 失败任务如何重试？
 
-失败任务行会显示 **↻** 重试按钮，点击后会级联重置依赖该任务的后续任务。
+**自动重试**:
+- 启用 Settings 中的"自动重试"
+- 失败任务会自动重试（指数退避）
+- 显示实时倒计时
 
-## 注意事项
+**手动重试**:
+- 点击失败任务行的 **↻** 按钮
+- 会级联重置依赖该任务的后续任务
 
-- 调度器使用 `--dangerously-skip-permissions` 启动 Claude，请仅在可信项目中使用
-- 任务依赖设计合理可避免代码冲突，调度器不检测文件级冲突
-- 失败状态仅保存在内存中，只有成功状态会写入 AUTO-DEV.md
+### Q5: 调度器占用太多内存？
+
+**优化**:
+```bash
+# 增加 Node.js 内存限制
+export NODE_OPTIONS="--max-old-space-size=4096"
+npm run dev
+
+# 或减少并发 Worker 数量
+# Settings → 设置为 1-2 个 Worker
+```
+
+### Q6: Windows/Mac/Linux 上安装失败？
+
+**解决**:
+- Windows: 查看 README 的 Windows 安装部分
+- macOS: 查看 **MAC_GUIDE.md**
+- Linux: 查看 **LINUX_GUIDE.md**
+
+这三份文档包含各平台的完整故障排查步骤。
+
+### Q7: 如何使用 Docker 运行？
+
+**仅限 Linux 用户**：
+
+```bash
+# 使用 docker-compose
+docker-compose up
+
+# 访问 http://localhost:5174
+```
+
+详见 **LINUX_GUIDE.md** 的 Docker 部分。
+
+## ⚠️ 注意事项
+
+### 安全性
+- 调度器使用 `--dangerously-skip-permissions` 启动 Claude，**仅在可信项目中使用**
+- 不要在生产环境直接运行调度器，使用受控的 Docker 容器
+
+### 性能和成本
+- 每个 Worker 是独立的 Claude 进程，上下文**无法共享**
+- 10 个任务 = 10 次完整的项目理解开销（与并发数无关）
+- **建议**: 合理控制任务粒度，避免拆分过细（每个任务 > 2 小时工作量）
+
+### 并发控制
+- 任务依赖设计合理可避免代码冲突，**调度器不检测文件级冲突**
+- Wave 序列严格按顺序执行，同 Wave 内的任务并发执行
+- 避免在 Wave 间设置过多依赖关系
+
+### 状态管理
+- 失败状态仅保存在**内存**中，调度器重启后丢失
+- 只有 **成功状态** 会写入 AUTO-DEV.md（持久化）
+- Issue 追踪状态会跨会话持久化（存储到 userData）
+
+### 网络和超时
+- Claude CLI 调用需要**稳定网络**
+- 慢速网络环境建议增加超时时间
+- 某些工具调用（codex/gemini）可能耗时较长，默认 60 分钟超时
 
 ## 相关链接
 
@@ -289,7 +428,46 @@ claude --version
 - `TaskCards.vue`/`WavesCard.vue`: 卡片式任务视图
 - `ProgressCard.vue`/`ControlCard.vue`: 增强控制面板
 
-## 更新日志
+## 📚 文档导航
+
+| 用户类型 | 首先阅读 | 然后阅读 |
+|---------|---------|---------|
+| **新用户** | README.md | 平台特定指南 (MAC_GUIDE.md / LINUX_GUIDE.md) |
+| **Windows 用户** | 本文档 | install.ps1 + TROUBLESHOOTING.md |
+| **Mac 用户** | MAC_GUIDE.md | README.md |
+| **Linux 用户** | LINUX_GUIDE.md | README.md, Docker 部分 |
+| **升级用户** | MIGRATION.md | UPDATE-SUMMARY.md |
+| **开发者** | BRAINSTORM-ANALYSIS.md | SYNC-ANALYSIS.md, 源代码 |
+
+## 📊 更新日志
+
+### v2.0 (2026-01-23) - Major Release with Cross-Platform Support
+
+**🎉 重大更新**
+- ✅ 品牌统一: SanGuo Tools Team → Auto-Dev Scheduler Contributors
+- ✅ 完整的跨平台支持: Windows / macOS / Linux
+- ✅ 新增 Mac 用户完整指南 (MAC_GUIDE.md)
+- ✅ 新增 Linux 用户完整指南 + Docker 支持 (LINUX_GUIDE.md)
+- ✅ OpenSpec 命令同步: 最新的 auto-dev.md
+- ✅ 安装脚本增强: 自动依赖检查 + npm 安装
+
+**🔧 技术改进**
+- 增强 install.ps1: Claude CLI 和 OpenSpec CLI 强制检查
+- 创建 install.sh: 跨 Unix 平台通用安装脚本
+- 自动化 npm install: 减少新用户错误
+- 完善 AUTO-DEV.md 生成流程文档
+
+**📚 文档完善**
+- 新增 8 个文档文件 (~60 KB)
+- 补充 AUTO-DEV.md 生成指南
+- 平台特定的故障排查文档
+- 工作流程可视化
+
+**支持范围**:
+- Windows 10+: ✅ Electron + NSIS
+- macOS 12.0+: ✅ 开发模式 + 详细指南
+- Ubuntu 20.04+: ✅ 多发行版 + Docker + Systemd
+- Node.js 20+: ✅ 完整支持
 
 ### v1.5.0 (2026-01) - Phase 4 Release
 

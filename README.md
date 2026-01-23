@@ -34,6 +34,39 @@
 - **🛡️ 错误恢复**: API 速率限制处理、指数退避重试、自动恢复机制
 - **🔧 OpenSpec 集成**: 完整支持 proposal → apply → archive 工作流
 
+## 📸 项目效果图
+
+### 主调度界面
+
+![Auto-Dev Scheduler Main Interface](docs/images/scheduler-main.png)
+
+**界面特性**：
+- **左侧波次管理**: 可视化展示 Wave 1-6 的任务分组和执行进度
+- **中央日志面板**: 实时显示 Claude 任务执行日志（含时间戳、工具调用、代码修改）
+- **右侧进度追踪**: 显示当前执行进度（3/13 = 23%）、模型分布、Worker 状态
+- **任务卡片**: 底部可拖拽的任务卡片，支持一键查看任务详情和日志
+
+**关键指标**：
+- 🟢 Claude 任务正在执行（4m 52s 已耗时）
+- 🟣 Supervisor 辅助模式监控任务健康
+- 📊 ECharts 实时绘制模型使用分布
+
+### Blocker 自动暂停
+
+![Auto-Dev Scheduler Blocker Detection](docs/images/scheduler-blocker.png)
+
+**自动暂停机制**：
+- 调度器检测到编译错误或依赖冲突时自动暂停执行
+- 弹窗显示具体问题：`TASK-0.2 缺少功能未实现，阻塞 TASK-0.3`
+- 提示用户修复后可点击"继续并忽略阻塞"继续执行
+- 完整记录问题原文件和代码位置，支持快速定位
+
+**Blocker 类型**：
+- 🔴 编译错误（TypeScript/Babel）
+- 🔴 运行时错误（ReferenceError、TypeError）
+- 🔴 依赖缺失（npm 包、文件导入）
+- 🔴 功能不完整（标记为 BLOCKER 的任务）
+
 ## 🎯 工作流程
 
 ```

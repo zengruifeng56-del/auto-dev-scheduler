@@ -1,19 +1,41 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useSchedulerStore } from '../stores/scheduler'
 
 const store = useSchedulerStore()
 
-const isVisible = computed(() =>
+const dismissed = ref(false)
+
+const shouldShow = computed(() =>
   store.paused && store.pausedReason === 'blocker'
 )
+
+const isVisible = computed(() =>
+  shouldShow.value && !dismissed.value
+)
+
+watch(shouldShow, (visible) => {
+  if (!visible) dismissed.value = false
+})
 
 const blockers = computed(() =>
   store.issues.filter(i => i.status === 'open' && i.severity === 'blocker')
 )
 
+function handleClose() {
+  dismissed.value = true
+}
+
+function handlePause() {
+  store.pause()
+}
+
 function handleAcknowledge() {
   store.resume()
+  store.$patch({
+    paused: false,
+    pausedReason: null
+  })
 }
 </script>
 
@@ -23,6 +45,14 @@ function handleAcknowledge() {
       <div class="modal-header">
         <span class="icon">⚠️</span>
         <h3>自动暂停：检测到阻塞级问题</h3>
+        <button
+          type="button"
+          class="btn-close"
+          aria-label="关闭"
+          @click="handleClose"
+        >
+          ✕
+        </button>
       </div>
 
       <div class="modal-body">
@@ -45,7 +75,14 @@ function handleAcknowledge() {
       </div>
 
       <div class="modal-footer">
-        <button class="btn-primary" @click="handleAcknowledge">
+        <button
+          type="button"
+          class="btn-secondary btn-pause"
+          @click="handlePause"
+        >
+          暂停
+        </button>
+        <button type="button" class="btn-primary" @click="handleAcknowledge">
           确认并尝试继续
         </button>
       </div>
@@ -97,6 +134,31 @@ function handleAcknowledge() {
   font-size: 15px;
   font-weight: 600;
   color: var(--vscode-accent-red, #cd4646);
+}
+
+.btn-close {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--vscode-fore-text-dim, #969696);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.btn-close:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--vscode-fore-text, #dcdcdc);
+}
+
+.btn-close:focus-visible {
+  outline: 2px solid var(--vscode-focus-border, #007fd4);
+  outline-offset: 2px;
 }
 
 .modal-body {
@@ -161,6 +223,25 @@ function handleAcknowledge() {
   border-top: 1px solid var(--vscode-border, #333);
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-pause {
+  margin-right: auto;
+}
+
+.btn-secondary {
+  background: var(--vscode-input-bg, #3c3c3c);
+  color: var(--vscode-fore-text, #dcdcdc);
+  border: 1px solid var(--vscode-border, #555);
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  background: var(--vscode-input-bg-hover, #4c4c4c);
 }
 
 .btn-primary {

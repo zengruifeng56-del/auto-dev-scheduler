@@ -100,7 +100,7 @@ function handleKillWorker(workerId: number) {
 
     <!-- Top Cards Row -->
     <section class="top-cards">
-      <ControlCard />
+      <ControlCard @open-issues="openIssuesDialog" />
       <ProgressCard />
     </section>
 

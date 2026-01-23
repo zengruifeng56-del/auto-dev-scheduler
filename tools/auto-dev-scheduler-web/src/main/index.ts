@@ -191,7 +191,8 @@ if (!gotTheLock) {
         const callId = `${workerId}-${Date.now()}`;
         watchdog.recordToolCallStarted(String(workerId), toolName, callId);
       } else if (entry.type === 'result') {
-        watchdog.clearToolCalls(String(workerId));
+        // Remove one pending tool call (FIFO) instead of clearing all
+        watchdog.recordToolCallCompleted(String(workerId));
       }
     });
 

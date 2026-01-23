@@ -1,10 +1,52 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useSchedulerStore } from '../stores/scheduler'
 import RetryCountdown from './RetryCountdown.vue'
 import type { Task, TaskStatus } from '@shared/types'
+import type { TableInstance } from 'element-plus'
 
 const store = useSchedulerStore()
+const tableRef = ref<TableInstance>()
+
+// Worker kind icons: 🟣 Claude, 🔵 Codex, 🟢 Gemini
+const workerKindIcons: Record<string, string> = {
+  claude: '🟣',
+  codex: '🔵',
+  gemini: '🟢'
+}
+
+// Get worker kind for a task via workerId lookup
+const getWorkerKind = (task: Task): string | undefined => {
+  if (!task.workerId) return undefined
+  const worker = store.workers.get(task.workerId)
+  return worker?.workerKind
+}
+
+// Get worker icon for display
+const getWorkerIcon = (task: Task): string => {
+  const kind = getWorkerKind(task)
+  return kind ? workerKindIcons[kind] ?? '' : ''
+}
+
+// Routing configuration: Prefix -> Expected Worker
+const ROUTING_PREFIXES: Record<string, string> = {
+  'FE-': 'gemini',
+  'BE-': 'codex'
+}
+
+// Derive expected worker from Task ID prefix
+const getExpectedWorkerKind = (taskId: string): string => {
+  const match = Object.entries(ROUTING_PREFIXES).find(([prefix]) => taskId.startsWith(prefix))
+  return match ? match[1] : 'claude'
+}
+
+// Check if delegation is potentially missing (Warning state)
+const isRoutingMismatch = (task: Task): boolean => {
+  if (task.status !== 'running' || !task.workerId) return false
+  const actual = getWorkerKind(task)
+  const expected = getExpectedWorkerKind(task.id)
+  return actual === 'claude' && expected !== 'claude'
+}
 const selectedTaskId = ref<string>('')
 const now = ref(Date.now())
 let nowTimer: number | undefined
@@ -23,13 +65,13 @@ onUnmounted(() => {
 
 // Status config: icon and color (with fallback values)
 const statusConfig: Record<TaskStatus | 'wave', { icon: string; color: string }> = {
-  running: { icon: '●', color: 'var(--vscode-accent-orange, #c88c32)' },
-  success: { icon: '✓', color: 'var(--vscode-accent-green, #3c783c)' },
-  ready: { icon: '○', color: 'var(--vscode-accent-blue, #007acc)' },
-  pending: { icon: '◌', color: 'var(--vscode-fore-text-dim, #969696)' },
-  failed: { icon: '✗', color: 'var(--vscode-accent-red, #cd4646)' },
-  canceled: { icon: '⊘', color: 'var(--vscode-fore-text-dim, #969696)' },
-  wave: { icon: '◈', color: 'var(--vscode-fore-text, #dcdcdc)' }
+  running: { icon: '●', color: '#ce9178' },
+  success: { icon: '✓', color: '#4ec9b0' },
+  ready: { icon: '○', color: '#0e639c' },
+  pending: { icon: '·', color: '#666' },
+  failed: { icon: '✗', color: '#f14c4c' },
+  canceled: { icon: '⊘', color: '#666' },
+  wave: { icon: '◈', color: 'var(--vscode-fore-text, #cccccc)' }
 }
 
 const getStatusConfig = (status: TaskStatus | 'wave') => {
@@ -147,12 +189,39 @@ const rowClassName = ({ row }: { row: TableRow }) => {
   }
   return classes.join(' ')
 }
+
+// Scroll to a specific wave group
+function scrollToWave(wave: number) {
+  void nextTick(() => {
+    const tableEl = tableRef.value?.$el as HTMLElement | undefined
+    if (!tableEl) return
+    const waveRowId = `wave-${wave}`
+    // Find the row element by data-row-key or by traversing rows
+    const bodyWrapper = tableEl.querySelector('.el-table__body-wrapper')
+    if (!bodyWrapper) return
+    const rows = bodyWrapper.querySelectorAll('tr')
+    for (const row of rows) {
+      // el-table sets row-key as data attribute or we can check the content
+      const rowKey = row.getAttribute('data-row-key')
+      if (rowKey === waveRowId) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        // Highlight effect
+        row.classList.add('highlight-wave')
+        setTimeout(() => row.classList.remove('highlight-wave'), 1500)
+        return
+      }
+    }
+  })
+}
+
+defineExpose({ scrollToWave })
 </script>
 
 <template>
   <div class="task-table-container">
     <el-table
       v-if="hasData"
+      ref="tableRef"
       :data="tableData"
       row-key="id"
       :tree-props="{ children: 'children' }"
@@ -164,9 +233,24 @@ const rowClassName = ({ row }: { row: TableRow }) => {
       <!-- Status Column -->
       <el-table-column label="状态" width="120" align="center">
         <template #default="{ row }">
-          <div class="status-cell">
+          <div class="status-cell" :class="'status-' + row.status">
             <span class="status-icon" :style="{ color: getStatusConfig(row.status).color }">
               {{ getStatusConfig(row.status).icon }}
+            </span>
+            <!-- Worker kind badge: only show for running tasks with assigned worker -->
+            <span
+              v-if="!row.isGroup && row.status === 'running' && getWorkerIcon(row)"
+              class="worker-badge"
+              :class="{ 'worker-mismatch': isRoutingMismatch(row) }"
+              :title="isRoutingMismatch(row)
+                ? `Warning: Running on Claude, expected ${getExpectedWorkerKind(row.id)}`
+                : getWorkerKind(row)"
+            >
+              {{ getWorkerIcon(row) }}
+              <span v-if="isRoutingMismatch(row)" class="mismatch-indicator">!</span>
+            </span>
+            <span v-if="!row.isGroup && isRoutingMismatch(row)" class="routing-hint">
+              → {{ workerKindIcons[getExpectedWorkerKind(row.id)] }}?
             </span>
             <RetryCountdown
               v-if="!row.isGroup && row.status === 'failed' && row.nextRetryAt && row.nextRetryAt > now"
@@ -234,6 +318,7 @@ const rowClassName = ({ row }: { row: TableRow }) => {
   flex-direction: column;
   background-color: var(--vscode-panel-bg);
   overflow: hidden;
+  border-radius: 4px;
 }
 
 /* Status cell */
@@ -249,6 +334,49 @@ const rowClassName = ({ row }: { row: TableRow }) => {
   font-size: 16px;
   font-weight: bold;
   line-height: 1;
+}
+
+.status-cell.status-running .status-icon {
+  animation: pulse-dot 1s infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-cell.status-running .status-icon {
+    animation: none;
+  }
+}
+
+@keyframes pulse-dot {
+  from { opacity: 0.6; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1.1); }
+}
+
+/* Worker kind badge */
+.worker-badge {
+  font-size: 14px;
+  line-height: 1;
+  margin-left: 2px;
+  position: relative;
+}
+
+.worker-mismatch {
+  filter: grayscale(0.5);
+}
+
+.mismatch-indicator {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  font-size: 10px;
+  color: var(--vscode-accent-orange, #ce9178);
+  font-weight: bold;
+}
+
+.routing-hint {
+  font-size: 10px;
+  color: var(--vscode-fore-text-dim);
+  opacity: 0.6;
+  margin-left: 4px;
 }
 
 /* Task ID and title */
@@ -325,11 +453,12 @@ const rowClassName = ({ row }: { row: TableRow }) => {
 
 /* Table row overrides */
 :deep(.wave-group-row) {
-  background-color: var(--vscode-bg) !important;
+  background-color: var(--vscode-input-bg) !important;
+  border-bottom: 1px solid var(--vscode-border) !important;
 }
 
 :deep(.wave-group-row:hover) {
-  background-color: var(--vscode-bg) !important;
+  background-color: var(--vscode-input-bg) !important;
 }
 
 :deep(.selected-row) {
@@ -352,5 +481,15 @@ const rowClassName = ({ row }: { row: TableRow }) => {
 
 :deep(.el-table__expand-icon .el-icon) {
   font-size: 14px;
+}
+
+/* Wave highlight animation */
+:deep(.highlight-wave) {
+  animation: wave-highlight 1.5s ease-out;
+}
+
+@keyframes wave-highlight {
+  0% { background-color: var(--vscode-accent-blue, #007acc) !important; }
+  100% { background-color: var(--vscode-input-bg) !important; }
 }
 </style>

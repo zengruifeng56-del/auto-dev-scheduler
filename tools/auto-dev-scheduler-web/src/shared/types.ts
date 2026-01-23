@@ -7,6 +7,19 @@ export type TaskStatus =
   | 'failed'     // Failed
   | 'canceled';  // Canceled by user
 
+// Task kind derived from TaskId prefix (Phase 2)
+export type TaskKind =
+  | 'prototype'   // PROTO-* tasks (model-generated prototypes)
+  | 'audit'       // AUDIT-* tasks (code review/audit)
+  | 'frontend'    // FE-* tasks (frontend development)
+  | 'backend'     // BE-* tasks (backend development)
+  | 'integration' // INT-* tasks (integration/coordination)
+  | 'review'      // REVIEW-* tasks (review & sync)
+  | 'general';    // Default for unmatched prefixes
+
+// Task scope for domain routing (Phase 2)
+export type TaskScope = 'FE' | 'BE' | 'FULL';
+
 // Task definition
 export interface Task {
   id: string;
@@ -19,8 +32,17 @@ export interface Task {
   startTime?: string;      // ISO timestamp
   endTime?: string;        // ISO timestamp
   workerId?: number;       // Assigned worker ID
-  retryCount?: number;     // Auto-retry count (0 = never retried)
+  retryCount?: number;     // Auto-retry count for non-API failures (0 = never retried)
   nextRetryAt?: number;    // Next retry time (epoch ms)
+  // API error recovery fields
+  hasModifiedCode?: boolean;      // True if the task has used Edit/Write tools
+  apiErrorRetryCount?: number;    // API error retry count (separate from retryCount)
+  isApiErrorRecovery?: boolean;   // True if this run is recovering from API error
+  // Phase 2: Multi-model collaboration fields
+  persona?: string;               // e.g., "gemini/cocos-game-expert" - explicit routing
+  scope?: TaskScope;              // FE | BE | FULL - domain scope for routing
+  taskKind?: TaskKind;            // Derived from TaskId prefix (PROTO/AUDIT/FE/BE/INT)
+  metadata?: Record<string, string>;  // Generic key-value for extensible fields
 }
 
 // Auto-retry configuration
@@ -54,6 +76,7 @@ export interface WorkerState {
   tokenUsage?: string;     // e.g., "10.2k/180k"
   currentTool?: string;    // Currently executing tool
   logs: LogEntry[];
+  workerKind?: 'claude' | 'codex' | 'gemini';  // Phase 3: Worker type for UI display
 }
 
 // Progress info
@@ -85,7 +108,76 @@ export interface Issue {
 }
 
 // Pause reason for UI display
-export type SchedulerPauseReason = 'user' | 'blocker';
+export type SchedulerPauseReason = 'user' | 'blocker' | 'apiError';
+
+// ============================================================
+// Artifact Types (Phase 3: Multi-Model Collaboration)
+// ============================================================
+
+export type ArtifactKind = 'diff' | 'files' | 'spec' | 'report' | 'log';
+
+export interface ArtifactRef {
+  id: string;
+  runId: string;
+  taskId: string;
+  name: string;
+  kind: ArtifactKind;
+  mediaType: string;
+  sha256: string;
+  sizeBytes: number;
+  uri: string;
+  createdAt: string;
+  meta?: Record<string, unknown>;
+}
+
+export interface ArtifactDraft {
+  name: string;
+  kind: ArtifactKind;
+  content: Uint8Array | string;
+  mediaType?: string;
+  meta?: Record<string, unknown>;
+}
+
+export interface ArtifactRequirement {
+  fromTaskId: string;
+  name?: string;
+  kind?: ArtifactKind;
+  required?: boolean;
+  maxBytes?: number;
+}
+
+// ============================================================
+// Worker Types (Phase 3: Multi-Model Collaboration)
+// ============================================================
+
+export type WorkerType = 'claude-cli' | 'codex-cli' | 'gemini-cli';
+
+export interface WorkerCapabilities {
+  type: WorkerType;
+  model?: string;
+  maxConcurrentRuns: number;
+  supportsStreaming: boolean;
+  supportsArtifacts: boolean;
+}
+
+export type WorkerRunPhase = 'starting' | 'running' | 'finishing';
+
+export interface WorkerRunRequest {
+  runId: string;
+  taskId: string;
+  prompt: string;
+  projectRoot: string;
+  artifactRequirements?: ArtifactRequirement[];
+  timeout?: number;
+  personaPrompt?: string;  // Persona context to prepend to prompt
+}
+
+export interface WorkerRunResult {
+  success: boolean;
+  durationMs: number;
+  artifacts?: ArtifactRef[];
+  error?: string;
+}
 
 // Scheduler full state (for hydration)
 export interface SchedulerFullState {
@@ -110,6 +202,8 @@ export interface TaskUpdateMessage {
     taskId: string;
     status: TaskStatus;
     duration?: number;
+    startTime?: string;
+    endTime?: string;
     workerId?: number;
     retryCount?: number;
     nextRetryAt?: number | null;
@@ -147,6 +241,7 @@ export interface WorkerStateMessage {
     taskId?: string;
     tokenUsage?: string;
     currentTool?: string;
+    workerKind?: 'claude' | 'codex' | 'gemini';
   };
 }
 
@@ -289,3 +384,21 @@ export type ClientMessage =
   | KillWorkerMessage
   | ExportLogsMessage
   | PingMessage;
+
+// ============================================================
+// Utility Functions
+// ============================================================
+
+/**
+ * Generates a unique run ID for scheduler sessions.
+ * Uses crypto.randomUUID() when available, falls back to timestamp-based ID.
+ */
+export function generateRunId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback for environments without crypto.randomUUID
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).substring(2, 10);
+  return `${timestamp}-${random}`;
+}

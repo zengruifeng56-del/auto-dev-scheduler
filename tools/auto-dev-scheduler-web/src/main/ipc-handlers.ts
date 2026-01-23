@@ -87,6 +87,10 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions): void {
     broadcast(getWebContents, IPC_CHANNELS.EVENT_ISSUE_UPDATE, msg.payload);
   });
 
+  scheduler.on('apiError', (msg) => {
+    broadcast(getWebContents, IPC_CHANNELS.EVENT_API_ERROR, msg.payload);
+  });
+
   // --------------------------------------------------------------------------
   // Renderer → Main Command Handlers (ipcRenderer.invoke)
   // --------------------------------------------------------------------------
@@ -194,6 +198,11 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions): void {
     emitFullState();
   });
 
+  ipcMain.handle(IPC_CHANNELS.ISSUE_CLEAR_ALL, async () => {
+    scheduler.clearAllIssues();
+    emitFullState();
+  });
+
   // --------------------------------------------------------------------------
   // Watchdog Config Handlers
   // --------------------------------------------------------------------------
@@ -208,6 +217,7 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions): void {
           gemini: 60 * 60_000,
           npmInstall: 15 * 60_000,
           npmBuild: 20 * 60_000,
+          thinking: 15 * 60_000,
           default: 10 * 60_000
         }
       };
@@ -264,5 +274,14 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions): void {
         await settingsStore.update({ scheduler: { blockerAutoPauseEnabled: config.blockerAutoPauseEnabled } });
       }
     }
+  });
+
+  // --------------------------------------------------------------------------
+  // API Error Retry Handler
+  // --------------------------------------------------------------------------
+
+  ipcMain.handle(IPC_CHANNELS.API_ERROR_RETRY, async () => {
+    scheduler.retryFromApiError();
+    emitFullState();
   });
 }

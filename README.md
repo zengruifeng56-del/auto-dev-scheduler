@@ -22,8 +22,14 @@
 ## 工作流程
 
 ```
-用户需求 → /openspec:proposal → 生成 AUTO-DEV.md → /openspec:apply → 调度器执行 → 验收 → /openspec:archive
+用户需求 → /openspec:proposal → tasks.md → 转换为 AUTO-DEV.md → /openspec:apply → 调度器执行 → 验收 → /openspec:archive
 ```
+
+**关键步骤说明**：
+1. **Proposal 阶段**: 使用 `/openspec:proposal` 创建 `openspec/changes/{change-id}/tasks.md`（细粒度任务清单）
+2. **转换阶段**: 将 `tasks.md` 按可并行维度重组为 `openspec/execution/{project}/AUTO-DEV.md`（粗粒度并发任务）
+3. **执行阶段**: 使用 `/openspec:apply` 启动调度器并发执行
+4. **归档阶段**: 使用 `/openspec:archive` 归档完成的变更
 
 ### 1. 创建提案
 
@@ -31,7 +37,56 @@
 /openspec:proposal my-feature
 ```
 
-与 Claude 讨论需求，生成方案文档和 `AUTO-DEV.md` 任务文件。
+与 Claude 讨论需求，生成方案文档：
+- `openspec/changes/my-feature/proposal.md` - 需求和目标
+- `openspec/changes/my-feature/tasks.md` - 细粒度任务清单（单人用）
+- `openspec/changes/my-feature/design.md` - 技术决策（可选）
+
+### 1.5. 转换为并发任务（重要步骤）
+
+**方式 A: 手动创建**（推荐）
+
+根据 `tasks.md` 创建 `openspec/execution/my-feature/AUTO-DEV.md`：
+
+1. 按可并行维度（前端/后端/模块）将任务分组到 Wave
+2. 每个 Wave 内的任务可并发执行
+3. 设置任务间的依赖关系
+
+**格式要求**：
+```markdown
+## 并行波次图
+
+Wave 1: TASK-01, TASK-02, TASK-03
+Wave 2: TASK-04, TASK-05
+Wave 3: TASK-06
+
+---
+
+## Wave 1: 描述
+
+### TASK-01: 任务标题
+
+- [ ] 任务描述
+
+**依赖**: 无
+**Persona**: codex/backend （可选，指定使用的模型）
+
+**执行步骤**:
+1. 步骤 1
+2. 步骤 2
+
+**验收标准**:
+- 标准 1
+- 标准 2
+```
+
+**方式 B: 使用模板**
+
+复制 `openspec/execution/README.md` 中的模板并填充内容。
+
+**关键区别**：
+- `tasks.md` = 细粒度串行任务（适合单人执行）
+- `AUTO-DEV.md` = 粗粒度并发任务（适合多 Claude 并发）
 
 ### 2. 启动调度
 
@@ -56,10 +111,14 @@
 
 ### 方式一：在线安装（推荐）
 
-在目标项目根目录运行 PowerShell：
-
+**Windows (PowerShell)**：
 ```powershell
 irm https://raw.githubusercontent.com/zengruifeng56-del/auto-dev-scheduler/master/install.ps1 | iex
+```
+
+**macOS/Linux (Bash)**：
+```bash
+curl -fsSL https://raw.githubusercontent.com/zengruifeng56-del/auto-dev-scheduler/master/install.sh | bash
 ```
 
 ### 方式二：源码运行
@@ -145,9 +204,22 @@ Wave 3: REVIEW-SYNC
 
 ## 系统要求
 
-- Windows（Mac/Linux 未充分测试）
-- Node.js >= 20
-- Claude CLI 已安装并配置
+- **操作系统**: Windows / macOS / Linux
+- **Node.js**: >= 20
+- **Git**: 已安装
+- **Claude CLI**: 已安装并配置（必需）
+- **OpenSpec CLI**: 已安装（必需，用于 proposal/archive 命令）
+
+### Mac 用户注意事项
+
+- 使用 `bash` 脚本安装: `curl -fsSL ... | bash`
+- 确保已安装 Command Line Tools: `xcode-select --install`
+- 如使用 M1/M2 芯片，Node.js 需要 arm64 版本
+
+### Linux 用户注意事项
+
+- Electron 版调度器仅提供 Windows 二进制，Linux 用户请使用开发模式：`npm run dev`
+- 或编译本地版本：`npm run build`
 
 ## 常见问题
 
@@ -184,7 +256,60 @@ claude --version
 - [OpenSpec GitHub](https://github.com/Fission-AI/OpenSpec)
 - [Claude Code 官方文档](https://docs.anthropic.com/claude-code)
 
+## 架构演进
+
+### Phase 4: Claude-First Architecture (2026-01)
+
+**核心变更**：所有任务统一由 Claude 执行，通过 MCP 工具智能委派
+
+- **统一入口**：所有任务类型（前端/后端/测试）都由 Claude Worker 处理
+- **智能委派**：Claude 根据任务特征决定是否调用：
+  - `mcp__codex__codex`: 后端逻辑、算法、Debug 任务
+  - `mcp__gemini__gemini`: 前端 UI、样式、组件任务
+- **路由规则**：`routing-registry.ts` 提供委派提示，但最终决策权在 Claude
+- **废弃特性**：直接实例化 Codex/Gemini Worker 的方式已移除
+
+**新增模块**：
+- `worker-factory.ts`: 工厂模式 + 路由预览
+- `routing-registry.ts`: 任务到模型的路由规则库
+- `scheduler/` 子系统：
+  - `compile-checker.ts`: TypeScript 编译检查
+  - `issue-tracker.ts`: 跨任务问题追踪
+  - `resilience-manager.ts`: API 错误恢复
+  - `session-persistence.ts`: 会话暂停/恢复
+  - `task-manager.ts`: 任务生命周期管理
+  - `worker-pool.ts`: Worker 实例池
+- `metadata-validator.ts`: AUTO-DEV.md 格式校验
+- `artifact-store.ts`: 任务输出物管理
+
+**UI 增强**：
+- `ModelDistributionChart.vue`: ECharts 模型使用分布图
+- `DelegationTrace.vue`: 可视化委派流程
+- `ApiErrorOverlay.vue`: API 速率限制处理
+- `TaskCards.vue`/`WavesCard.vue`: 卡片式任务视图
+- `ProgressCard.vue`/`ControlCard.vue`: 增强控制面板
+
 ## 更新日志
+
+### v1.5.0 (2026-01) - Phase 4 Release
+
+**重大架构变更**
+- Claude-First 架构：统一通过 Claude 路由所有任务
+- Worker Factory 模式：集中式 Worker 创建与路由
+- Scheduler 子系统重构：模块化的调度器组件
+- 智能委派系统：基于任务特征的自动模型选择
+
+**新功能**
+- ECharts 可视化：模型使用分布、任务进度图表
+- 委派追踪：实时显示 Claude → Codex/Gemini 委派链路
+- 元数据校验：AUTO-DEV.md 格式自动检查
+- Artifact 管理：任务输出物集中存储
+- 测试支持：集成 Vitest 测试框架
+
+**依赖更新**
+- 新增：`echarts` ^6.0.0
+- 新增：`vue-echarts` ^8.0.1
+- 新增：`vitest` ^2.1.0
 
 ### v1.4.0 (2024-12)
 

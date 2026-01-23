@@ -4,6 +4,10 @@ import { useSchedulerStore } from '../stores/scheduler'
 
 const store = useSchedulerStore()
 
+const emit = defineEmits<{
+  'wave-click': [wave: number]
+}>()
+
 interface WaveInfo {
   wave: number
   total: number
@@ -44,6 +48,10 @@ function getWaveClass(w: WaveInfo) {
   if (w.completed > 0) return 'partial'
   return 'pending'
 }
+
+function handleWaveClick(wave: number) {
+  emit('wave-click', wave)
+}
 </script>
 
 <template>
@@ -55,7 +63,8 @@ function getWaveClass(w: WaveInfo) {
         :key="w.wave"
         class="wave-segment"
         :class="[getWaveClass(w), { current: w.wave === currentWave }]"
-        :title="`Wave ${w.wave}: ${w.completed}/${w.total}`"
+        :title="`Wave ${w.wave}: ${w.completed}/${w.total} - 点击跳转`"
+        @click="handleWaveClick(w.wave)"
       >
         <span class="wave-num">{{ w.wave }}</span>
       </div>
@@ -94,7 +103,13 @@ function getWaveClass(w: WaveInfo) {
   justify-content: center;
   background: var(--vscode-input-bg, #1e1e1e);
   border: 1px solid var(--vscode-border, #333);
-  transition: all 0.2s;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+}
+
+.wave-segment:hover {
+  border-color: var(--vscode-accent-blue, #007acc);
 }
 
 .wave-segment.pending {
@@ -106,14 +121,15 @@ function getWaveClass(w: WaveInfo) {
 }
 
 .wave-segment.completed {
-  background: var(--vscode-accent-green, #3c783c);
-  border-color: var(--vscode-accent-green, #3c783c);
+  background: var(--vscode-accent-green, #4ec9b0);
+  border-color: rgba(78, 201, 176, 0.8);
 }
 
 .wave-segment.running {
-  background: var(--vscode-accent-blue, #007acc);
-  border-color: var(--vscode-accent-blue, #007acc);
-  animation: pulse 1.5s infinite;
+  background: var(--vscode-accent-blue, #0e639c);
+  border-color: rgba(14, 99, 156, 0.8);
+  box-shadow: 0 0 8px var(--vscode-glow-blue, rgba(14, 99, 156, 0.4));
+  animation: phase-timeline-pulse 1.5s ease-in-out infinite;
 }
 
 .wave-segment.failed {
@@ -122,7 +138,8 @@ function getWaveClass(w: WaveInfo) {
 }
 
 .wave-segment.current {
-  transform: scaleY(1.2);
+  transform: scale(1.05);
+  z-index: 1;
 }
 
 .wave-num {
@@ -145,7 +162,21 @@ function getWaveClass(w: WaveInfo) {
   text-align: right;
 }
 
-@keyframes pulse {
+@media (prefers-reduced-motion: reduce) {
+  .wave-segment {
+    transition: none;
+  }
+
+  .wave-segment.running {
+    animation: none;
+  }
+
+  .wave-segment.current {
+    transform: none;
+  }
+}
+
+@keyframes phase-timeline-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }
 }

@@ -40,6 +40,10 @@ export const IPC_CHANNELS = {
 
   // Issue Commands (Renderer → Main)
   ISSUE_UPDATE_STATUS: 'issue:updateStatus',
+  ISSUE_CLEAR_ALL: 'issue:clearAll',
+
+  // API Error Commands (Renderer → Main)
+  API_ERROR_RETRY: 'apiError:retry',
 
   // Events (Main → Renderer)
   EVENT_FILE_LOADED: 'scheduler:fileLoaded',
@@ -52,6 +56,7 @@ export const IPC_CHANNELS = {
   EVENT_WORKER_HEALTH_WARNING: 'worker:healthWarning',
   EVENT_ISSUE_REPORTED: 'issue:reported',
   EVENT_ISSUE_UPDATE: 'issue:update',
+  EVENT_API_ERROR: 'apiError:event',
 } as const;
 
 export type IpcChannels = typeof IPC_CHANNELS;

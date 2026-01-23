@@ -33,7 +33,8 @@ try {
     $nodeVersion = node --version 2>$null
     Write-Host "  [OK] Node.js: $nodeVersion" -ForegroundColor Green
 } catch {
-    Write-Host "  [WARN] Node.js not found. Please install Node.js 18+ to run the scheduler." -ForegroundColor Yellow
+    Write-Host "  [ERROR] Node.js not found. Please install Node.js 20+ from: https://nodejs.org" -ForegroundColor Red
+    $hasErrors = $true
 }
 
 # Check Git
@@ -41,7 +42,34 @@ try {
     $gitVersion = git --version 2>$null
     Write-Host "  [OK] Git: $gitVersion" -ForegroundColor Green
 } catch {
-    Write-Error "Git is required but not found. Please install Git first."
+    Write-Host "  [ERROR] Git not found. Please install Git from: https://git-scm.com" -ForegroundColor Red
+    $hasErrors = $true
+}
+
+# Check Claude CLI (Required)
+try {
+    $claudeVersion = claude --version 2>$null
+    Write-Host "  [OK] Claude CLI: $claudeVersion" -ForegroundColor Green
+} catch {
+    Write-Host "  [ERROR] Claude CLI not found. This is REQUIRED for running workers." -ForegroundColor Red
+    Write-Host "         Install from: https://docs.anthropic.com/claude/docs/claude-cli" -ForegroundColor Yellow
+    $hasErrors = $true
+}
+
+# Check OpenSpec CLI (Required)
+try {
+    $openspecVersion = openspec --version 2>$null
+    Write-Host "  [OK] OpenSpec CLI: $openspecVersion" -ForegroundColor Green
+} catch {
+    Write-Host "  [ERROR] OpenSpec CLI not found. This is REQUIRED for proposal/archive commands." -ForegroundColor Red
+    Write-Host "         Install from: https://github.com/Fission-AI/OpenSpec" -ForegroundColor Yellow
+    $hasErrors = $true
+}
+
+# Exit if critical dependencies missing
+if ($hasErrors) {
+    Write-Host ""
+    Write-Host "[ABORT] Please install missing dependencies and try again." -ForegroundColor Red
     exit 1
 }
 
@@ -214,11 +242,35 @@ if ((Test-Path $projectTemplate) -and -not (Test-Path $projectMd)) {
 
 Write-Host ""
 Write-Host "=== Installation Complete ===" -ForegroundColor Cyan
+
+# Check and install scheduler dependencies
+$schedulerPath = Join-Path $TargetDir "tools/auto-dev-scheduler-web"
+if (Test-Path "$schedulerPath/package.json") {
+    Write-Host ""
+    Write-Host "Installing scheduler dependencies..." -ForegroundColor Yellow
+    Push-Location $schedulerPath
+    try {
+        if (-not (Test-Path "node_modules")) {
+            npm install 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "  [OK] Scheduler dependencies installed" -ForegroundColor Green
+            } else {
+                Write-Host "  [WARN] npm install failed. Please run manually:" -ForegroundColor Yellow
+                Write-Host "         cd tools/auto-dev-scheduler-web && npm install" -ForegroundColor White
+            }
+        } else {
+            Write-Host "  [OK] Scheduler dependencies already installed" -ForegroundColor Green
+        }
+    } finally {
+        Pop-Location
+    }
+}
+
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Yellow
 Write-Host "1. Edit openspec/project.md to fill in project info"
-Write-Host "2. Install scheduler dependencies:"
-Write-Host "   cd tools/auto-dev-scheduler-web && npm install"
-Write-Host "3. Start the scheduler:"
-Write-Host "   npm run dev"
+Write-Host "2. Start the scheduler:"
+Write-Host "   cd tools/auto-dev-scheduler-web && npm run dev"
+Write-Host "3. Create your first proposal:"
+Write-Host "   Ask Claude: /openspec:proposal <feature-name>"
 Write-Host ""

@@ -6,6 +6,7 @@ import {
   VideoPause,
   CircleCloseFilled,
   Document,
+  Warning,
   Plus,
   Minus,
   Search
@@ -18,6 +19,8 @@ const store = useSchedulerStore();
 const concurrency = ref(2);
 const fileInput = ref('');
 const browseLoading = ref(false);
+
+const emit = defineEmits<{ (e: 'open-issues'): void }>();
 
 const openSystemFileDialog = async () => {
   if (browseLoading.value || store.running) return;
@@ -102,14 +105,13 @@ const adjustFontSize = (delta: number) => {
 
 <template>
   <div class="control-bar">
-    <!-- Row 1: File Selection & Concurrency & Actions -->
+    <!-- Single Row: All Controls -->
     <div class="control-row">
       <!-- File Path Input -->
       <div class="file-group">
-        <span class="label">任务文件:</span>
         <el-input
           v-model="fileInput"
-          placeholder="输入 AUTO-DEV.md 路径..."
+          placeholder="AUTO-DEV.md 路径..."
           size="small"
           :disabled="store.running"
           @keyup.enter="handleLoadFile"
@@ -125,24 +127,23 @@ const adjustFontSize = (delta: number) => {
             </el-button>
           </template>
           <template #append>
-            <el-button :disabled="!canLoadFile" @click="handleLoadFile">
+            <el-button :disabled="!canLoadFile" @click="handleLoadFile" title="加载任务文件">
               <el-icon><FolderOpened /></el-icon>
-              <span style="margin-left: 4px">加载</span>
             </el-button>
           </template>
         </el-input>
       </div>
 
       <!-- Concurrency -->
-      <div class="control-group">
-        <span class="label">并发:</span>
+      <div class="control-group compact">
         <el-select
           v-model="concurrency"
           size="small"
-          style="width: 70px"
+          style="width: 58px"
           :disabled="store.running"
+          placeholder="并发"
         >
-          <el-option v-for="n in 4" :key="n" :label="n" :value="n" />
+          <el-option v-for="n in 4" :key="n" :label="`${n}线程`" :value="n" />
         </el-select>
       </div>
 
@@ -153,9 +154,9 @@ const adjustFontSize = (delta: number) => {
           size="small"
           :disabled="!canStart"
           @click="handleStart"
+          title="开始执行"
         >
           <el-icon><VideoPlay /></el-icon>
-          开始
         </el-button>
 
         <el-button
@@ -163,10 +164,10 @@ const adjustFontSize = (delta: number) => {
           size="small"
           :disabled="!canPauseResume"
           @click="togglePause"
+          :title="store.paused ? '继续' : '暂停'"
         >
           <el-icon v-if="store.paused"><VideoPlay /></el-icon>
           <el-icon v-else><VideoPause /></el-icon>
-          {{ store.paused ? '继续' : '暂停' }}
         </el-button>
 
         <el-button
@@ -174,56 +175,51 @@ const adjustFontSize = (delta: number) => {
           size="small"
           :disabled="!canStop"
           @click="handleStop"
+          title="全部停止"
         >
           <el-icon><CircleCloseFilled /></el-icon>
-          全部停止
         </el-button>
-      </div>
-
-      <!-- Export Logs -->
-      <el-button size="small" :disabled="!canExportLogs" @click="handleExportLogs">
-        <el-icon><Document /></el-icon>
-        <span style="margin-left: 4px">导出日志</span>
-      </el-button>
-
-      <!-- Settings -->
-      <SettingsDialog />
-    </div>
-
-    <!-- Row 2: Progress & Font Control -->
-    <div class="control-row status-row">
-      <!-- Font Size -->
-      <div class="control-group font-control">
-        <span class="label">字体:</span>
-        <el-button-group>
-          <el-button
-            size="small"
-            :disabled="!canDecreaseFontSize"
-            @click="adjustFontSize(-1)"
-          >
-            <el-icon><Minus /></el-icon>
-          </el-button>
-          <div class="font-display">{{ store.fontSize }}</div>
-          <el-button
-            size="small"
-            :disabled="!canIncreaseFontSize"
-            @click="adjustFontSize(1)"
-          >
-            <el-icon><Plus /></el-icon>
-          </el-button>
-        </el-button-group>
       </div>
 
       <!-- Progress -->
       <div class="progress-group">
-        <span class="label">进度: {{ store.progress.completed }}/{{ store.progress.total }}</span>
+        <span class="progress-text">{{ store.progress.completed }}/{{ store.progress.total }}</span>
         <el-progress
           :percentage="store.progressPercent"
-          :stroke-width="12"
+          :stroke-width="8"
           :show-text="false"
           class="progress-bar"
         />
         <span class="percentage">{{ store.progressPercent }}%</span>
+      </div>
+
+      <!-- Issues Button -->
+      <el-button
+        size="small"
+        @click="emit('open-issues')"
+        title="查看问题列表"
+        :type="store.openIssueCount > 0 ? 'warning' : 'default'"
+        :class="{ 'has-issues': store.openIssueCount > 0 }"
+      >
+        <el-icon><Warning /></el-icon>
+        <span v-if="store.openIssueCount > 0" class="issue-badge">{{ store.openIssueCount }}</span>
+      </el-button>
+
+      <!-- Export & Settings -->
+      <el-button size="small" :disabled="!canExportLogs" @click="handleExportLogs" title="导出日志">
+        <el-icon><Document /></el-icon>
+      </el-button>
+
+      <SettingsDialog />
+
+      <!-- Font Size (Compact) -->
+      <div class="font-control">
+        <el-button size="small" :disabled="!canDecreaseFontSize" @click="adjustFontSize(-1)" title="缩小字体">
+          <el-icon><Minus /></el-icon>
+        </el-button>
+        <el-button size="small" :disabled="!canIncreaseFontSize" @click="adjustFontSize(1)" title="放大字体">
+          <el-icon><Plus /></el-icon>
+        </el-button>
       </div>
     </div>
   </div>
@@ -233,81 +229,88 @@ const adjustFontSize = (delta: number) => {
 .control-bar {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  padding: 0;
 }
 
 .control-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
-}
-
-.status-row {
-  justify-content: space-between;
 }
 
 .control-group {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
-.label {
-  color: var(--vscode-fore-text-dim);
-  font-size: 13px;
-  white-space: nowrap;
+.control-group.compact {
+  gap: 0;
 }
 
 .file-group {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex: 1;
-  min-width: 280px;
-  max-width: 500px;
+  flex: 0 1 320px;
+  min-width: 180px;
 }
 
 .actions {
-  gap: 6px;
+  gap: 4px;
 }
 
-// Font control styling
+.issue-badge {
+  margin-left: 2px;
+  padding: 0 5px;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  border-radius: 8px;
+  background-color: #fff;
+  color: var(--vscode-accent-orange, #c88c32);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.has-issues {
+  animation: pulse-warning 2s infinite;
+}
+
+@keyframes pulse-warning {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
 .font-control {
-  .el-button-group {
-    display: flex;
-    align-items: center;
-  }
-
-  .font-display {
-    padding: 0 10px;
-    min-width: 28px;
-    text-align: center;
-    font-size: 12px;
-    line-height: 24px;
-    background-color: var(--vscode-input-bg);
-    border-top: 1px solid var(--vscode-border);
-    border-bottom: 1px solid var(--vscode-border);
-  }
+  display: flex;
+  gap: 2px;
+  margin-left: 4px;
 }
 
-// Progress styling
 .progress-group {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex: 1;
-  justify-content: flex-end;
+  gap: 6px;
+  flex: 0 1 160px;
+  min-width: 100px;
+
+  .progress-text {
+    font-size: 11px;
+    color: var(--vscode-fore-text-dim);
+    white-space: nowrap;
+  }
 
   .progress-bar {
-    width: 200px;
-    max-width: 300px;
+    flex: 1;
+    min-width: 60px;
   }
 
   .percentage {
-    min-width: 40px;
+    min-width: 32px;
     text-align: right;
-    font-size: 12px;
+    font-size: 11px;
+    color: var(--vscode-fore-text);
   }
 }
 </style>

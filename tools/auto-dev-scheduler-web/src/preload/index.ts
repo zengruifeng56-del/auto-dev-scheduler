@@ -15,6 +15,7 @@ import type {
   IpcWorkerHealthWarningPayload,
   IpcIssueReportedPayload,
   IpcIssueUpdatePayload,
+  IpcApiErrorPayload,
   WatchdogConfigPayload,
   AutoRetryConfigPayload,
 } from '../shared/electron-api.d';
@@ -107,6 +108,14 @@ const electronAPI: ElectronAPI = {
   updateIssueStatus: (issueId: string, status: IssueStatus) =>
     ipcRenderer.invoke(IPC_CHANNELS.ISSUE_UPDATE_STATUS, { issueId, status }),
 
+  clearAllIssues: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.ISSUE_CLEAR_ALL),
+
+  // ==========================================================================
+  // API Error Commands
+  // ==========================================================================
+  retryFromApiError: () => ipcRenderer.invoke(IPC_CHANNELS.API_ERROR_RETRY),
+
   // ==========================================================================
   // Event Subscriptions
   // ==========================================================================
@@ -139,6 +148,9 @@ const electronAPI: ElectronAPI = {
 
   onIssueUpdate: (callback: (payload: IpcIssueUpdatePayload) => void) =>
     createEventSubscription(IPC_CHANNELS.EVENT_ISSUE_UPDATE, callback),
+
+  onApiError: (callback: (payload: IpcApiErrorPayload) => void) =>
+    createEventSubscription(IPC_CHANNELS.EVENT_API_ERROR, callback),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

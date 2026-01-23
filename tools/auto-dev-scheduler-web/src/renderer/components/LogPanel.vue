@@ -3,7 +3,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElDialog } from 'element-plus';
 
 import { useSchedulerStore } from '../stores/scheduler';
-import type { LogEntry, WorkerState } from '@shared/types';
+import DelegationTrace from './DelegationTrace.vue';
+import type { LogEntry, TaskStatus, WorkerState } from '@shared/types';
 
 const ROW_HEIGHT = 20;
 const OVERSCAN = 6;
@@ -33,6 +34,63 @@ const canInteract = computed(() => isIpcReady.value && isActive.value);
 const taskId = computed(() => worker.value?.taskId ?? '');
 const tokenUsage = computed(() => worker.value?.tokenUsage ?? '');
 const currentTool = computed(() => worker.value?.currentTool ?? '');
+const workerKind = computed(() => worker.value?.workerKind);
+
+const taskStatus = computed<TaskStatus | undefined>(() => {
+  if (!taskId.value) return undefined;
+  return store.tasks.find(t => t.id === taskId.value)?.status;
+});
+
+const traceLogs = computed<LogEntry[]>(() => {
+  if (!taskId.value) return [];
+  const taskLogEntries = store.taskLogs.get(taskId.value);
+  if (taskLogEntries && taskLogEntries.length > 0) return taskLogEntries;
+  return logs.value;
+});
+
+const workerKindBadge = computed(() => {
+  if (!isActive.value || !taskId.value) return null;
+  const kind = worker.value?.workerKind;
+  if (!kind) return null;
+
+  switch (kind) {
+    case 'claude':
+      return { kind, label: 'Claude', icon: '🟣' };
+    case 'codex':
+      return { kind, label: 'Codex', icon: '🔵' };
+    case 'gemini':
+      return { kind, label: 'Gemini', icon: '🟢' };
+    default:
+      return null;
+  }
+});
+
+// Elapsed time tracking
+const elapsedTime = ref('');
+let timerInterval: number | undefined;
+
+function updateTimer() {
+  if (!worker.value?.active || !worker.value?.taskId) {
+    elapsedTime.value = '';
+    return;
+  }
+  const task = store.tasks.find(t => t.id === worker.value?.taskId);
+  if (task?.startTime && task.status === 'running') {
+    const start = new Date(task.startTime).getTime();
+    const diff = Math.floor((Date.now() - start) / 1000);
+    if (diff < 0) { elapsedTime.value = '0s'; return; }
+
+    const h = Math.floor(diff / 3600);
+    const m = Math.floor((diff % 3600) / 60);
+    const s = diff % 60;
+
+    if (h > 0) elapsedTime.value = `${h}h ${m}m ${s}s`;
+    else if (m > 0) elapsedTime.value = `${m}m ${s}s`;
+    else elapsedTime.value = `${s}s`;
+  } else {
+    elapsedTime.value = '';
+  }
+}
 
 const viewportRef = ref<HTMLDivElement | null>(null);
 const viewportHeight = ref(0);
@@ -70,17 +128,25 @@ const visibleRange = computed(() => {
 const translateY = computed(() => visibleRange.value.start * ROW_HEIGHT);
 
 function normalizeInline(content: string): string {
+  // Simple newline replacement - memoization not needed as virtualizer already limits calls
   return content.replace(/\r?\n/g, ' ');
 }
 
+// Pre-allocate object structure for visible items to reduce GC pressure
 const visibleItems = computed(() => {
   const { start, end } = visibleRange.value;
   const slice = logs.value.slice(start, end);
-  return slice.map((entry, offset) => ({
-    entry,
-    key: `${props.workerId}-${start + offset}`,
-    inline: normalizeInline(entry.content)
-  }));
+  const workerId = props.workerId;
+  const result = new Array(slice.length);
+  for (let i = 0; i < slice.length; i++) {
+    const entry = slice[i];
+    result[i] = {
+      entry,
+      key: `${workerId}-${start + i}`,
+      inline: normalizeInline(entry.content)
+    };
+  }
+  return result;
 });
 
 function syncViewportMetrics() {
@@ -318,12 +384,17 @@ onMounted(() => {
     syncInputHeight();
     if (follow.value) void scrollToBottom();
   });
+
+  // Start elapsed time timer
+  timerInterval = window.setInterval(updateTimer, 1000);
+  updateTimer();
 });
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect();
   resizeObserver = null;
   if (scrollRafId) cancelAnimationFrame(scrollRafId);
+  if (timerInterval) clearInterval(timerInterval);
 });
 
 watch(
@@ -365,6 +436,10 @@ watch(
       <div class="header-left">
         <span class="worker-dot" :class="{ active: isActive }" />
         <span class="header-title">{{ taskId || `工作进程 ${workerId}` }}</span>
+        <span v-if="workerKindBadge" class="worker-kind-badge" :class="'kind-' + workerKindBadge.kind">
+          {{ workerKindBadge.icon }} {{ workerKindBadge.label }}
+        </span>
+        <span v-if="elapsedTime" class="header-meta timer">({{ elapsedTime }})</span>
         <span v-if="tokenUsage" class="header-meta">[{{ tokenUsage }}]</span>
         <span v-if="currentTool" class="header-meta tool">{{ currentTool }}</span>
       </div>
@@ -399,6 +474,14 @@ watch(
         >✕</button>
       </div>
     </div>
+
+    <DelegationTrace
+      v-if="taskId"
+      :task-id="taskId"
+      :worker-kind="workerKind"
+      :task-status="taskStatus"
+      :logs="traceLogs"
+    />
 
     <div ref="viewportRef" class="log-viewport" @scroll.passive="onViewportScroll">
       <div class="log-spacer" :style="{ height: `${totalHeight}px` }">
@@ -450,7 +533,7 @@ watch(
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: var(--vscode-input-bg, #1e1e1e);
+  background: var(--vscode-input-bg);
   overflow: hidden;
 }
 
@@ -460,8 +543,8 @@ watch(
   justify-content: space-between;
   gap: 8px;
   padding: 4px 8px;
-  background: var(--vscode-panel-bg, #252526);
-  border-bottom: 1px solid var(--vscode-border, #3c3c3c);
+  background: var(--vscode-panel-bg);
+  border-bottom: 1px solid var(--vscode-border);
   font-size: 12px;
   color: var(--vscode-fore-text, #dcdcdc);
   user-select: none;
@@ -493,6 +576,26 @@ watch(
   color: var(--vscode-accent-blue, #007acc);
 }
 
+.worker-kind-badge {
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1;
+  border-radius: 12px;
+  color: #fff;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.worker-kind-badge.kind-claude { background: #7c3aed; }
+.worker-kind-badge.kind-codex { background: var(--vscode-accent-blue, #007acc); }
+.worker-kind-badge.kind-gemini { background: var(--vscode-accent-green, #3c783c); }
+
 .header-meta {
   color: var(--vscode-fore-text-dim, #969696);
   overflow: hidden;
@@ -502,6 +605,11 @@ watch(
 
 .header-meta.tool {
   color: var(--vscode-accent-orange, #c88c32);
+}
+
+.header-meta.timer {
+  color: var(--vscode-accent-green, #3c783c);
+  font-family: 'Consolas', monospace;
 }
 
 .header-right {
@@ -565,9 +673,9 @@ watch(
   flex: 1;
   min-height: 0;
   overflow: auto;
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: 'Consolas', 'Menlo', 'Courier New', monospace;
   font-size: var(--log-font-size);
-  background: var(--vscode-input-bg, #1e1e1e);
+  background: var(--vscode-input-bg);
 }
 
 .log-spacer {
@@ -595,7 +703,7 @@ watch(
 }
 
 .log-row:hover {
-  background: var(--vscode-selection, #333334);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .log-time {
@@ -663,8 +771,8 @@ watch(
   align-items: flex-end;
   gap: 6px;
   padding: 6px 8px;
-  background: var(--vscode-panel-bg, #252526);
-  border-top: 1px solid var(--vscode-border, #3c3c3c);
+  background: var(--vscode-panel-bg);
+  border-top: 1px solid var(--vscode-border);
 }
 
 .input-field {
@@ -673,8 +781,9 @@ watch(
   max-height: 96px;
   padding: 4px 8px;
   resize: none;
-  background: var(--vscode-input-bg, #1e1e1e);
-  border: 1px solid var(--vscode-border, #3c3c3c);
+  background: var(--vscode-input-bg);
+  border: 1px solid var(--vscode-border);
+  border-radius: 2px;
   color: var(--vscode-fore-text, #dcdcdc);
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: var(--log-font-size);
@@ -694,8 +803,9 @@ watch(
 .send-btn {
   height: 26px;
   padding: 0 12px;
-  background: var(--vscode-accent-blue, #007acc);
+  background: var(--vscode-accent-blue, #0e639c);
   border: none;
+  border-radius: 2px;
   color: #fff;
   cursor: pointer;
   font-size: 12px;

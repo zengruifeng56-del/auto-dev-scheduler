@@ -71,6 +71,18 @@ export interface IpcIssueUpdatePayload {
   status: IssueStatus;
 }
 
+export interface IpcApiErrorPayload {
+  errorText: string;
+  retryCount: number;
+  maxRetries: number;
+  nextRetryInMs: number | null;  // null = no more retries, waiting for user action
+  // Per-task retry info
+  taskId?: string;
+  taskRetryCount?: number;
+  taskMaxRetries?: number;
+  pauseReason?: string;
+}
+
 export interface WatchdogConfigPayload {
   checkIntervalMs: number;
   activityTimeoutMs: number;
@@ -79,6 +91,7 @@ export interface WatchdogConfigPayload {
     gemini: number;
     npmInstall: number;
     npmBuild: number;
+    thinking: number;
     default: number;
   };
 }
@@ -130,6 +143,10 @@ export interface ElectronAPI {
 
   // Issue Commands
   updateIssueStatus: (issueId: string, status: IssueStatus) => Promise<void>;
+  clearAllIssues: () => Promise<void>;
+
+  // API Error Commands
+  retryFromApiError: () => Promise<void>;
 
   // Event Subscriptions (returns unsubscribe function)
   onFileLoaded: (callback: (payload: IpcFileLoadedPayload) => void) => () => void;
@@ -142,6 +159,7 @@ export interface ElectronAPI {
   onWorkerHealthWarning: (callback: (payload: IpcWorkerHealthWarningPayload) => void) => () => void;
   onIssueReported: (callback: (payload: IpcIssueReportedPayload) => void) => () => void;
   onIssueUpdate: (callback: (payload: IpcIssueUpdatePayload) => void) => () => void;
+  onApiError: (callback: (payload: IpcApiErrorPayload) => void) => () => void;
 }
 
 // =============================================================================

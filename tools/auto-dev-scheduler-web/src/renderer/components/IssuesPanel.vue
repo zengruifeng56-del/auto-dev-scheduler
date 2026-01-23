@@ -42,21 +42,86 @@ async function updateStatus(issueId: string, status: IssueStatus) {
   await store.updateIssueStatus(issueId, status)
 }
 
+async function clearAllIssues() {
+  if (issues.value.length === 0) return
+  await store.clearAllIssues()
+}
+
 function formatFiles(files: string[]): string {
   if (files.length === 0) return '-'
   if (files.length === 1) return files[0]
   return `${files[0]} (+${files.length - 1})`
+}
+
+function exportIssues() {
+  const lines: string[] = ['# Issues Report', '']
+  lines.push(`Generated at: ${new Date().toLocaleString()}`, '')
+
+  const formatIssue = (i: Issue) => {
+    lines.push(`### [${i.severity.toUpperCase()}] ${i.title}`)
+    lines.push(`- **ID**: ${i.id}`)
+    lines.push(`- **Files**: ${i.files.join(', ') || 'None'}`)
+    if (i.ownerTaskId) lines.push(`- **Owner Task**: ${i.ownerTaskId}`)
+    if (i.details) {
+      lines.push(`- **Details**:`)
+      lines.push('```')
+      lines.push(i.details)
+      lines.push('```')
+    }
+    lines.push('')
+  }
+
+  if (openIssues.value.length > 0) {
+    lines.push('## Open Issues', '')
+    openIssues.value.forEach(formatIssue)
+  }
+
+  if (fixedIssues.value.length > 0) {
+    lines.push('## Fixed Issues', '')
+    fixedIssues.value.forEach(i => lines.push(`- [Fixed] ${i.title}`))
+    lines.push('')
+  }
+
+  if (ignoredIssues.value.length > 0) {
+    lines.push('## Ignored Issues', '')
+    ignoredIssues.value.forEach(i => lines.push(`- [Ignored] ${i.title}`))
+  }
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `issues-report-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.md`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 </script>
 
 <template>
   <div class="issues-panel">
     <div class="panel-header">
-      <span class="panel-title">问题列表</span>
-      <span class="issue-count">
-        {{ openIssues.length }} 待处理
-        <span v-if="fixedIssues.length > 0" class="fixed-count">/ {{ fixedIssues.length }} 已修复</span>
-      </span>
+      <div class="header-left-group">
+        <span class="panel-title">问题列表</span>
+        <span class="issue-count">
+          {{ openIssues.length }} 待处理
+          <span v-if="fixedIssues.length > 0" class="fixed-count">/ {{ fixedIssues.length }} 已修复</span>
+        </span>
+      </div>
+      <div class="header-actions">
+        <button
+          class="header-btn header-clear-btn"
+          @click="clearAllIssues"
+          title="清除所有问题"
+          :disabled="issues.length === 0"
+        >
+          🗑 清除
+        </button>
+        <button class="header-btn header-export-btn" @click="exportIssues" title="导出为 Markdown">
+          ⬇ 导出
+        </button>
+      </div>
     </div>
 
     <div v-if="issues.length === 0" class="empty-state">
@@ -181,6 +246,41 @@ function formatFiles(files: string[]): string {
   text-transform: uppercase;
   font-size: 11px;
   color: var(--vscode-fore-text-dim, #969696);
+}
+
+.header-left-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.header-btn {
+  background: transparent;
+  border: 1px solid var(--vscode-border, #333);
+  color: var(--vscode-fore-text, #dcdcdc);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 2px;
+}
+
+.header-btn:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.header-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.header-clear-btn:hover:not(:disabled) {
+  border-color: var(--vscode-accent-red, #cd4646);
+  color: var(--vscode-accent-red, #cd4646);
 }
 
 .issue-count {
@@ -356,10 +456,6 @@ function formatFiles(files: string[]): string {
 }
 
 .issue-group.collapsed .issue-item {
-  padding: 4px 8px;
-}
-
-.issue-group.collapsed .issue-details {
   display: none;
 }
 </style>

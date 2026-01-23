@@ -82,7 +82,7 @@ function formatToolName(name: string): string {
 // Issue Report Parsing
 // ============================================================================
 
-const AUTO_DEV_ISSUE_PREFIX = 'AUTO_DEV_ISSUE:';
+const AUTO_DEV_ISSUE_REGEX = /(?:\*\*|\*|__|_|`)?\s*AUTO_DEV_ISSUE\s*(?:\*\*|\*|__|_|`)?\s*[:：]/i;
 
 /**
  * Extract the first balanced JSON object from a string.
@@ -135,16 +135,10 @@ function extractFirstJsonObject(text: string): string | null {
   return null;
 }
 
-function parseIssueReport(line: string): RawIssueReport | null {
-  const prefixIndex = line.indexOf(AUTO_DEV_ISSUE_PREFIX);
-  if (prefixIndex === -1) return null;
-
-  const payload = line.slice(prefixIndex + AUTO_DEV_ISSUE_PREFIX.length).trim();
-  if (!payload) return null;
-
-  // Extract first JSON object (handles extra text after JSON)
-  const jsonStr = extractFirstJsonObject(payload) ?? payload;
-
+/**
+ * Parse a single JSON issue object into RawIssueReport
+ */
+function parseIssueJson(jsonStr: string): RawIssueReport | null {
   try {
     const parsed = JSON.parse(jsonStr) as unknown;
     if (!isRecord(parsed)) return null;
@@ -175,6 +169,7 @@ function parseIssueReport(line: string): RawIssueReport | null {
     const signature = asString(parsed.signature)?.trim();
     const details = asString(parsed.details)?.trim();
     const ownerTaskId = asString(parsed.ownerTaskId)?.trim();
+    const status = asString(parsed.status)?.trim();
 
     return {
       title,
@@ -187,6 +182,77 @@ function parseIssueReport(line: string): RawIssueReport | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Parse first issue report from a line (legacy, for backward compatibility)
+ */
+export function parseIssueReport(line: string): RawIssueReport | null {
+  const reports = parseAllIssueReports(line);
+  return reports.length > 0 ? reports[0]! : null;
+}
+
+/**
+ * Parse ALL issue reports from a line/text block.
+ * Supports both single AUTO_DEV_ISSUE and batch AUTO_DEV_ISSUE_BATCH formats.
+ */
+export function parseAllIssueReports(text: string): RawIssueReport[] {
+  const results: RawIssueReport[] = [];
+
+  // Pattern for batch issue report: AUTO_DEV_ISSUE_BATCH: {...}
+  const batchRegex = /(?:\*\*|\*|__|_|`)?\s*AUTO_DEV_ISSUE_BATCH\s*(?:\*\*|\*|__|_|`)?\s*[:：]/gi;
+  let batchMatch: RegExpExecArray | null;
+
+  while ((batchMatch = batchRegex.exec(text)) !== null) {
+    const payload = text.slice(batchMatch.index + batchMatch[0].length).trim();
+    const jsonStr = extractFirstJsonObject(payload);
+    if (jsonStr) {
+      try {
+        const parsed = JSON.parse(jsonStr) as unknown;
+        if (isRecord(parsed) && Array.isArray(parsed.issues)) {
+          for (const issueObj of parsed.issues) {
+            if (isRecord(issueObj)) {
+              const report = parseIssueJson(JSON.stringify(issueObj));
+              if (report) results.push(report);
+            }
+          }
+        }
+      } catch {
+        // Ignore parse errors
+      }
+    }
+  }
+
+  // Pattern for single issue reports: AUTO_DEV_ISSUE: {...}
+  // Use global flag to find ALL occurrences
+  const singleRegex = /(?:\*\*|\*|__|_|`)?\s*AUTO_DEV_ISSUE\s*(?:\*\*|\*|__|_|`)?\s*[:：]/gi;
+  let singleMatch: RegExpExecArray | null;
+
+  while ((singleMatch = singleRegex.exec(text)) !== null) {
+    const payload = text.slice(singleMatch.index + singleMatch[0].length).trim();
+    const jsonStr = extractFirstJsonObject(payload);
+    if (jsonStr) {
+      const report = parseIssueJson(jsonStr);
+      if (report) results.push(report);
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Check if text contains AUTO_DEV_AUDIT_SUMMARY
+ */
+export function hasAuditSummary(text: string): boolean {
+  return /AUTO_DEV_AUDIT_SUMMARY\s*[:：]/i.test(text);
+}
+
+/**
+ * Check if a task ID is an AUDIT task
+ */
+export function isAuditTask(taskId: string | null | undefined): boolean {
+  if (!taskId) return false;
+  return taskId.toUpperCase().startsWith('AUDIT-');
 }
 
 // ============================================================================
@@ -221,6 +287,7 @@ export interface SlowToolTimeouts {
   gemini: number;
   npmInstall: number;
   npmBuild: number;
+  thinking: number;
   default: number;
 }
 
@@ -246,16 +313,80 @@ const DEFAULT_SLOW_TOOL_TIMEOUTS: SlowToolTimeouts = {
   gemini: Infinity,        // No timeout for Gemini (as per user requirement)
   npmInstall: 15 * 60_000, // 15 minutes
   npmBuild: 20 * 60_000,   // 20 minutes
+  thinking: 15 * 60_000,   // 15 minutes - grace period after AI tool returns
   default: 10 * 60_000     // 10 minutes
 };
 
 const DEFAULT_WATCHDOG: WatchdogConfig = {
   enabled: true,
-  idleTimeoutMs: 5 * 60_000,
+  idleTimeoutMs: 10 * 60_000, // 10 minutes - allows time for Claude to think after reading large files
   hardTimeoutMs: undefined,
   tickMs: 1_000,
   slowToolTimeouts: DEFAULT_SLOW_TOOL_TIMEOUTS
 };
+
+// ============================================================================
+// API Error Detection
+// ============================================================================
+
+/**
+ * Patterns that indicate a retryable API error (e.g., rate limit, overload)
+ * These errors should trigger scheduler-level pause and exponential backoff
+ *
+ * IMPORTANT: Patterns must be specific enough to avoid false positives!
+ * e.g., "rate limit" alone will match task names like "RATELIMIT-01: Rate Limit 检测"
+ */
+const API_ERROR_PATTERNS: RegExp[] = [
+  /API Error:\s*\d+\s*\{.*?"error"/i,           // Claude CLI API error format: "API Error: 503 {...}"
+  /\b50[0-9]\b\s*\{[^}]*"type"\s*:\s*"error"/i, // HTTP 5xx JSON error: '503 {"type":"error"...}'
+  /Unable to connect to API/i,                   // Connection failure
+  /UND_ERR_SOCKET/i,                             // Socket error
+  /No accounts are currently available/i,        // Account exhausted
+  /连接AI服务失败/,                               // Chinese: AI service connection failed
+  /模型负载过高/,                                  // Chinese: model overloaded
+  /rate.?limit.?(?:exceeded|error|hit|reached)/i, // Rate limit with error context
+  /exceeded.{0,20}rate.?limit/i,                 // "exceeded ... rate limit"
+  /server_error/i,                                // Server error type
+  /(?:is|are|being|currently)\s+overloaded/i,    // "is overloaded", "are overloaded"
+  /too many requests/i,                           // HTTP 429
+  /at\s+capacity/i,                               // "at capacity" (not just "capacity")
+  /temporarily unavailable/i,                     // Service unavailable
+  /internal server error/i,                       // HTTP 500
+  /\b529\b.*?overloaded/i,                        // HTTP 529 overloaded
+];
+
+function isApiError(text: string): boolean {
+  // Strip code blocks and inline code to prevent false positives
+  // when Claude outputs code snippets containing error patterns
+  const strippedText = text
+    .replace(/```[\s\S]*?```/g, '') // Remove fenced code blocks
+    .replace(/`[^`]+`/g, '');        // Remove inline code
+  return API_ERROR_PATTERNS.some(p => p.test(strippedText));
+}
+
+// ============================================================================
+// Code Modification Detection
+// ============================================================================
+
+/**
+ * Tools that modify code/files in the workspace.
+ * When these are detected, we mark the task as having modified code.
+ * This is used for API error recovery to send a special recovery prompt.
+ */
+const CODE_MODIFICATION_TOOLS = new Set([
+  'Edit',
+  'Write',
+  'MultiEdit',
+  'NotebookEdit',
+  // Common MCP tools that might modify files
+  'mcp__serena__replace_regex',
+  'mcp__serena__create_text_file',
+  'apply_patch',
+]);
+
+function isCodeModificationTool(toolName: string): boolean {
+  return CODE_MODIFICATION_TOOLS.has(toolName);
+}
 
 // ============================================================================
 // ClaudeWorker Class
@@ -272,12 +403,18 @@ export class ClaudeWorker extends EventEmitter {
 
   private completed = false;
   private killing = false;
+  private apiErrorDetected = false;
+  private hasModifiedCodeFlag = false;
 
   private taskId: string | null = null;
   private tokenUsage: string | null = null;
   private currentTool: string | null = null;
   private currentSlowToolCategory: keyof SlowToolTimeouts | null = null;
   private slowToolStartMs: number | null = null;
+
+  // Protocol Compliance: track if AUDIT tasks output summary
+  private auditSummaryReceived = false;
+  private issueReportCount = 0;
 
   private toolUseRegistry = new Map<string, {
     toolName: string;
@@ -339,6 +476,14 @@ export class ClaudeWorker extends EventEmitter {
 
   get currentToolName(): string | null {
     return this.currentTool;
+  }
+
+  /**
+   * Whether this worker has invoked any code modification tools (Edit, Write, etc.)
+   * Used for API error recovery to determine if a recovery prompt is needed.
+   */
+  get hasModifiedCode(): boolean {
+    return this.hasModifiedCodeFlag;
   }
 
   // --------------------------------------------------------------------------
@@ -444,6 +589,8 @@ export class ClaudeWorker extends EventEmitter {
   private reset(): void {
     this.completed = false;
     this.killing = false;
+    this.apiErrorDetected = false;
+    this.hasModifiedCodeFlag = false;
     this.taskId = null;
     this.tokenUsage = null;
     this.currentTool = null;
@@ -451,6 +598,9 @@ export class ClaudeWorker extends EventEmitter {
     this.slowToolStartMs = null;
     this.toolUseRegistry.clear();
     this.pendingBackgroundTasks.clear();
+    // Protocol Compliance reset
+    this.auditSummaryReceived = false;
+    this.issueReportCount = 0;
   }
 
   private setupEventHandlers(child: ChildProcessWithoutNullStreams): void {
@@ -506,11 +656,20 @@ export class ClaudeWorker extends EventEmitter {
     const trimmed = line.trim();
     if (!trimmed) return;
 
-    // Check for issue report first (before JSON parsing)
-    const issueReport = parseIssueReport(trimmed);
-    if (issueReport) {
-      this.emitLog('system', `Issue reported: [${issueReport.severity}] ${issueReport.title}`);
-      this.emit('issueReported', issueReport, this.taskId, this.workerId);
+    // Check for AUDIT_SUMMARY (Protocol Compliance)
+    if (hasAuditSummary(trimmed)) {
+      this.auditSummaryReceived = true;
+      this.emitLog('system', 'AUDIT_SUMMARY received');
+    }
+
+    // Check for issue reports first (before JSON parsing) - parse ALL issues
+    const issueReports = parseAllIssueReports(trimmed);
+    if (issueReports.length > 0) {
+      this.issueReportCount += issueReports.length;
+      for (const issueReport of issueReports) {
+        this.emitLog('system', `Issue reported: [${issueReport.severity}] ${issueReport.title}`);
+        this.emit('issueReported', issueReport, this.taskId, this.workerId);
+      }
       return;
     }
 
@@ -588,6 +747,36 @@ export class ClaudeWorker extends EventEmitter {
       } else if (blockType === 'text') {
         const text = asString(block.text);
         if (text) {
+          // Clear thinking state when assistant starts outputting text
+          if (this.currentSlowToolCategory === 'thinking') {
+            this.clearSlowToolState();
+          }
+
+          // Check for AUDIT_SUMMARY (Protocol Compliance)
+          if (hasAuditSummary(text)) {
+            this.auditSummaryReceived = true;
+            this.emitLog('system', 'AUDIT_SUMMARY received');
+          }
+
+          // Check for API errors (rate limit, overload, etc.) - CRITICAL
+          if (!this.apiErrorDetected && isApiError(text)) {
+            this.apiErrorDetected = true;
+            this.emitLog('error', `API Error detected: ${truncate(normalizeLine(text), 200)}`);
+            this.emit('apiError', text);
+            // Don't finalize here - let the result message handle it
+            // The scheduler will pause all workers when it receives this event
+          }
+
+          // Check for issue reports in text content - parse ALL issues
+          const issueReports = parseAllIssueReports(text);
+          if (issueReports.length > 0) {
+            this.issueReportCount += issueReports.length;
+          }
+          for (const issueReport of issueReports) {
+            this.emitLog('system', `Issue reported: [${issueReport.severity}] ${issueReport.title}`);
+            this.emit('issueReported', issueReport, this.taskId, this.workerId);
+          }
+
           this.emitLog('output', truncate(normalizeLine(text), 4000));
           this.detectTaskId(text);
         }
@@ -599,6 +788,14 @@ export class ClaudeWorker extends EventEmitter {
     const toolName = asString(block.name) ?? 'unknown';
     const toolUseId = asString(block.id) ?? `unknown-${Date.now()}`;
     this.currentTool = toolName;
+
+    // Detect code modification tools (Edit, Write, etc.)
+    // This is used for API error recovery to determine if we need a recovery prompt
+    if (!this.hasModifiedCodeFlag && isCodeModificationTool(toolName)) {
+      this.hasModifiedCodeFlag = true;
+      this.emit('codeModified', toolName, this.taskId ?? this.assignedTaskId);
+      this.emitLog('system', `Code modification detected: ${toolName}`);
+    }
 
     const input = isRecord(block.input) ? block.input : null;
     const detail = input ? this.summarizeToolInput(input) : undefined;
@@ -924,7 +1121,16 @@ export class ClaudeWorker extends EventEmitter {
         // Synchronous tool or non-background tool - clear state only if no background tasks pending
         if (this.currentSlowToolCategory && !isTaskOutputCompletion) {
           if (this.pendingBackgroundTasks.size === 0) {
-            this.clearSlowToolState();
+            // AI tools (codex/gemini): transition to 'thinking' state instead of clearing
+            // This gives Claude time to process the AI response before idle timeout kicks in
+            if (this.currentSlowToolCategory === 'codex' || this.currentSlowToolCategory === 'gemini') {
+              const prevCategory = this.currentSlowToolCategory;
+              this.currentSlowToolCategory = 'thinking';
+              this.slowToolStartMs = Date.now();
+              this.emitLog('system', `${prevCategory} completed, waiting for model response (thinking...)`);
+            } else {
+              this.clearSlowToolState();
+            }
           }
         }
       }
@@ -945,11 +1151,13 @@ export class ClaudeWorker extends EventEmitter {
 
   private handleResultMessage(obj: JsonObject): void {
     const subtype = asString(obj.subtype);
-    const success = subtype === 'success';
+    // If API error was detected, force failure regardless of subtype
+    const success = this.apiErrorDetected ? false : subtype === 'success';
     const durationMs = asNumber(obj.duration_ms) ?? (Date.now() - this.startMs);
     const durSec = Math.round(durationMs / 100) / 10;
 
-    this.emitLog('system', `Complete: ${success ? 'OK' : 'FAIL'} ${durSec}s`);
+    const statusStr = this.apiErrorDetected ? 'FAIL (API Error)' : (success ? 'OK' : 'FAIL');
+    this.emitLog('system', `Complete: ${statusStr} ${durSec}s`);
     this.finalize(success);
 
     if (this.autoKillOnComplete) {
@@ -1114,6 +1322,26 @@ export class ClaudeWorker extends EventEmitter {
     this.completed = true;
     this.stopWatchdog();
     const durationMs = Date.now() - this.startMs;
+
+    // Protocol Compliance Check for AUDIT tasks
+    // Only check when task completed successfully - timeout/kill/error should not be flagged as protocol violation
+    const effectiveTaskId = this.taskId ?? this.assignedTaskId ?? null;
+    if (success && effectiveTaskId && isAuditTask(effectiveTaskId) && !this.auditSummaryReceived) {
+      // AUDIT task completed successfully without outputting AUDIT_SUMMARY - protocol violation
+      const violationIssue: RawIssueReport = {
+        title: `AUDIT 协议违规: ${effectiveTaskId} 未输出 AUDIT_SUMMARY`,
+        severity: 'error',
+        files: [],
+        signature: `protocol:audit-summary-missing:${effectiveTaskId}`,
+        details: `AUDIT 任务 ${effectiveTaskId} 成功完成但未输出 AUTO_DEV_AUDIT_SUMMARY。` +
+          ` 报告的问题数: ${this.issueReportCount}。` +
+          ' 这违反了 auto-dev.md 中的 AUDIT 任务协议。',
+        ownerTaskId: effectiveTaskId
+      };
+      this.emitLog('error', `Protocol violation: AUDIT task ${effectiveTaskId} did not output AUDIT_SUMMARY`);
+      this.emit('issueReported', violationIssue, effectiveTaskId, this.workerId);
+    }
+
     this.emit('complete', success, durationMs);
   }
 
@@ -1146,16 +1374,22 @@ export interface ClaudeWorker {
   on(event: 'complete', listener: (success: boolean, durationMs: number) => void): this;
   on(event: 'error', listener: (error: Error) => void): this;
   on(event: 'issueReported', listener: (issue: RawIssueReport, taskId: string | null, workerId?: number) => void): this;
+  on(event: 'apiError', listener: (errorText: string) => void): this;
+  on(event: 'codeModified', listener: (toolName: string, taskId: string | null | undefined) => void): this;
 
   once(event: 'log', listener: (entry: LogEntry) => void): this;
   once(event: 'taskDetected', listener: (taskId: string) => void): this;
   once(event: 'complete', listener: (success: boolean, durationMs: number) => void): this;
   once(event: 'error', listener: (error: Error) => void): this;
   once(event: 'issueReported', listener: (issue: RawIssueReport, taskId: string | null, workerId?: number) => void): this;
+  once(event: 'apiError', listener: (errorText: string) => void): this;
+  once(event: 'codeModified', listener: (toolName: string, taskId: string | null | undefined) => void): this;
 
   emit(event: 'log', entry: LogEntry): boolean;
   emit(event: 'taskDetected', taskId: string): boolean;
   emit(event: 'complete', success: boolean, durationMs: number): boolean;
   emit(event: 'error', error: Error): boolean;
   emit(event: 'issueReported', issue: RawIssueReport, taskId: string | null, workerId?: number): boolean;
+  emit(event: 'apiError', errorText: string): boolean;
+  emit(event: 'codeModified', toolName: string, taskId: string | null | undefined): boolean;
 }

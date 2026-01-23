@@ -15,7 +15,7 @@ import type { AutoRetryConfig, Issue, TaskStatus } from '../shared/types';
 // Types
 // ============================================================================
 
-export type SchedulerPauseReason = 'user' | 'blocker';
+export type SchedulerPauseReason = 'user' | 'blocker' | 'apiError';
 
 export interface PersistedTaskState {
   status: TaskStatus;
@@ -24,6 +24,10 @@ export interface PersistedTaskState {
   endTime?: string;
   retryCount?: number;
   nextRetryAt?: number;
+  // API error recovery fields
+  hasModifiedCode?: boolean;
+  apiErrorRetryCount?: number;
+  isApiErrorRecovery?: boolean;
 }
 
 export interface SchedulerSessionSnapshotV1 {
@@ -79,12 +83,14 @@ async function renameWithRetry(
 ): Promise<void> {
   const { allowMissing = false } = options;
   const maxAttempts = 5;
+  let lastErr: unknown;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       await rename(fromPath, toPath);
       return;
     } catch (err: unknown) {
+      lastErr = err;
       const code = isErrnoException(err) ? err.code : undefined;
       if (allowMissing && code === 'ENOENT') return;
       if (code === 'EPERM' || code === 'EBUSY' || code === 'EACCES') {
@@ -94,6 +100,11 @@ async function renameWithRetry(
       throw err;
     }
   }
+
+  if (lastErr) {
+    throw lastErr;
+  }
+  throw new Error(`Failed to rename ${fromPath} -> ${toPath} after ${maxAttempts} attempts`);
 }
 
 async function writeFileAtomic(filePath: string, data: string): Promise<void> {
@@ -202,7 +213,9 @@ export class SchedulerSessionStore {
 
     const pausedReasonRaw = obj.pausedReason;
     const pausedReason: SchedulerPauseReason | null =
-      pausedReasonRaw === 'user' || pausedReasonRaw === 'blocker' ? pausedReasonRaw : null;
+      pausedReasonRaw === 'user' || pausedReasonRaw === 'blocker' || pausedReasonRaw === 'apiError'
+        ? pausedReasonRaw
+        : null;
 
     const autoRetryConfigRaw = obj.autoRetryConfig as Partial<AutoRetryConfig> | undefined;
     const autoRetryConfig: AutoRetryConfig = {
@@ -228,7 +241,11 @@ export class SchedulerSessionStore {
           startTime: typeof s.startTime === 'string' ? s.startTime : undefined,
           endTime: typeof s.endTime === 'string' ? s.endTime : undefined,
           retryCount: typeof s.retryCount === 'number' ? Math.max(0, Math.floor(s.retryCount)) : undefined,
-          nextRetryAt: typeof s.nextRetryAt === 'number' ? Math.floor(s.nextRetryAt) : undefined
+          nextRetryAt: typeof s.nextRetryAt === 'number' ? Math.floor(s.nextRetryAt) : undefined,
+          // API error recovery fields
+          hasModifiedCode: typeof s.hasModifiedCode === 'boolean' ? s.hasModifiedCode : undefined,
+          apiErrorRetryCount: typeof s.apiErrorRetryCount === 'number' ? Math.max(0, Math.floor(s.apiErrorRetryCount)) : undefined,
+          isApiErrorRecovery: typeof s.isApiErrorRecovery === 'boolean' ? s.isApiErrorRecovery : undefined
         };
       }
     }

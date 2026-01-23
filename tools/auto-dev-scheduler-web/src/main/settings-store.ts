@@ -44,6 +44,7 @@ const DEFAULT_SETTINGS: AppSettingsV1 = {
       gemini: 60 * 60_000,
       npmInstall: 15 * 60_000,
       npmBuild: 20 * 60_000,
+      thinking: 15 * 60_000,
       default: 10 * 60_000
     }
   },

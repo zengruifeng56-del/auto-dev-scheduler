@@ -28,6 +28,7 @@ export interface WatchdogConfig {
     gemini: number;
     npmInstall: number;
     npmBuild: number;
+    thinking: number;
     default: number;
   };
 }
@@ -74,6 +75,7 @@ const DEFAULT_CONFIG: WatchdogConfig = {
     gemini: 60 * 60_000,
     npmInstall: 15 * 60_000,
     npmBuild: 20 * 60_000,
+    thinking: 15 * 60_000,
     default: 10 * 60_000
   }
 };
@@ -152,6 +154,27 @@ export class Watchdog extends EventEmitter {
     this.touch(workerId);
   }
 
+  recordToolCallCompleted(workerId: string, callId?: string): void {
+    const byWorker = this.pendingToolCalls.get(workerId);
+    if (!byWorker || byWorker.size === 0) return;
+
+    if (callId) {
+      // Remove specific call by ID
+      byWorker.delete(callId);
+    } else {
+      // Remove oldest call (FIFO) if no specific callId provided
+      const oldestKey = byWorker.keys().next().value as string | undefined;
+      if (oldestKey) byWorker.delete(oldestKey);
+    }
+
+    // Clean up empty maps
+    if (byWorker.size === 0) {
+      this.pendingToolCalls.delete(workerId);
+    }
+
+    this.touch(workerId);
+  }
+
   clearToolCalls(workerId: string): void {
     this.pendingToolCalls.delete(workerId);
     this.touch(workerId);
@@ -206,6 +229,7 @@ export class Watchdog extends EventEmitter {
       if (t.gemini !== undefined) this.config.slowToolTimeouts.gemini = safeMs(t.gemini, DEFAULT_CONFIG.slowToolTimeouts.gemini);
       if (t.npmInstall !== undefined) this.config.slowToolTimeouts.npmInstall = safeMs(t.npmInstall, DEFAULT_CONFIG.slowToolTimeouts.npmInstall);
       if (t.npmBuild !== undefined) this.config.slowToolTimeouts.npmBuild = safeMs(t.npmBuild, DEFAULT_CONFIG.slowToolTimeouts.npmBuild);
+      if (t.thinking !== undefined) this.config.slowToolTimeouts.thinking = safeMs(t.thinking, DEFAULT_CONFIG.slowToolTimeouts.thinking);
       if (t.default !== undefined) this.config.slowToolTimeouts.default = safeMs(t.default, DEFAULT_CONFIG.slowToolTimeouts.default);
     }
 
@@ -333,6 +357,7 @@ export class Watchdog extends EventEmitter {
     if (raw.includes('gemini')) return 'gemini';
     if (raw.includes('npm') && raw.includes('install')) return 'npmInstall';
     if (raw.includes('npm') && raw.includes('build')) return 'npmBuild';
+    if (raw.includes('thinking') || raw.includes('think')) return 'thinking';
     return 'default';
   }
 

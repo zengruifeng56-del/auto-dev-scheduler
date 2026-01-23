@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 
 import type {
   Task,
+  LogEntry,
   WorkerState,
   Progress,
   ServerMessage,
@@ -11,6 +12,19 @@ import type {
 } from '@shared/types';
 
 let ipcUnsubscribers: Array<() => void> = [];
+
+export interface ApiErrorState {
+  errorText: string;
+  retryCount: number;
+  maxRetries: number;
+  nextRetryInMs: number | null;
+  receivedAt: number;
+  // Per-task retry info
+  taskId?: string;
+  taskRetryCount?: number;
+  taskMaxRetries?: number;
+  pauseReason?: string;
+}
 
 export const useSchedulerStore = defineStore('scheduler', {
   state: () => ({
@@ -28,8 +42,12 @@ export const useSchedulerStore = defineStore('scheduler', {
     pausedReason: null as SchedulerPauseReason | null,
     tasks: [] as Task[],
     workers: new Map<number, WorkerState>(),
+    taskLogs: new Map<string, LogEntry[]>(),
     progress: { completed: 0, total: 0 } as Progress,
     issues: [] as Issue[],
+
+    // API Error state
+    apiError: null as ApiErrorState | null,
 
     // UI state
     fontSize: 12
@@ -119,6 +137,12 @@ export const useSchedulerStore = defineStore('scheduler', {
         }),
         api.onIssueUpdate((payload) => {
           this.handleServerMessage({ type: 'issueUpdate', payload });
+        }),
+        api.onApiError((payload) => {
+          this.apiError = {
+            ...payload,
+            receivedAt: Date.now()
+          };
         })
       ];
 
@@ -169,6 +193,12 @@ export const useSchedulerStore = defineStore('scheduler', {
               if (msg.payload.duration !== undefined) {
                 task.duration = msg.payload.duration;
               }
+              if (msg.payload.startTime !== undefined) {
+                task.startTime = msg.payload.startTime;
+              }
+              if (msg.payload.endTime !== undefined) {
+                task.endTime = msg.payload.endTime;
+              }
               if (msg.payload.workerId !== undefined) {
                 task.workerId = msg.payload.workerId;
               }
@@ -195,9 +225,17 @@ export const useSchedulerStore = defineStore('scheduler', {
             }
             worker.taskId = msg.payload.taskId;
             worker.logs.push(msg.payload.entry);
-            // Limit logs to 1000 entries
+            // Limit logs to 1000 entries (use shift instead of slice to avoid new array allocation)
             if (worker.logs.length > 1000) {
-              worker.logs = worker.logs.slice(-1000);
+              worker.logs.shift();
+            }
+            // Also store logs by taskId for DelegationTrace
+            if (msg.payload.taskId) {
+              const existing = this.taskLogs.get(msg.payload.taskId) ?? [];
+              const isStart = msg.payload.entry.type === 'start';
+              const next = isStart ? [msg.payload.entry] : [...existing, msg.payload.entry];
+              if (next.length > 1000) next.splice(0, next.length - 1000);
+              this.taskLogs.set(msg.payload.taskId, next);
             }
           }
           break;
@@ -209,6 +247,7 @@ export const useSchedulerStore = defineStore('scheduler', {
               worker = {
                 id: msg.payload.workerId,
                 active: msg.payload.active ?? true,
+                workerKind: msg.payload.workerKind,
                 logs: []
               };
               this.workers.set(msg.payload.workerId, worker);
@@ -217,6 +256,7 @@ export const useSchedulerStore = defineStore('scheduler', {
             worker.taskId = msg.payload.taskId;
             worker.tokenUsage = msg.payload.tokenUsage;
             worker.currentTool = msg.payload.currentTool;
+            worker.workerKind = msg.payload.workerKind ?? worker.workerKind;
           }
           break;
 
@@ -228,12 +268,20 @@ export const useSchedulerStore = defineStore('scheduler', {
           this.running = msg.payload.running;
           this.paused = msg.payload.paused;
           this.pausedReason = msg.payload.pausedReason ?? null;
+          // Clear API error state when no longer paused for API error
+          if (this.pausedReason !== 'apiError') {
+            this.apiError = null;
+          }
           break;
 
         case 'fullState':
           this.running = msg.payload.running;
           this.paused = msg.payload.paused;
           this.pausedReason = msg.payload.pausedReason ?? null;
+          // Clear API error state when no longer paused for API error
+          if (this.pausedReason !== 'apiError') {
+            this.apiError = null;
+          }
           this.filePath = msg.payload.filePath;
           this.projectRoot = msg.payload.projectRoot;
           this.tasks = msg.payload.tasks;
@@ -362,6 +410,23 @@ export const useSchedulerStore = defineStore('scheduler', {
         await window.electronAPI.updateIssueStatus(issueId, status);
       } catch (err: unknown) {
         this.lastError = err instanceof Error ? err.message : '更新问题状态失败';
+      }
+    },
+
+    async clearAllIssues() {
+      try {
+        await window.electronAPI.clearAllIssues();
+      } catch (err: unknown) {
+        this.lastError = err instanceof Error ? err.message : '清除问题失败';
+      }
+    },
+
+    async retryFromApiError() {
+      try {
+        this.apiError = null;
+        await window.electronAPI.retryFromApiError();
+      } catch (err: unknown) {
+        this.lastError = err instanceof Error ? err.message : 'API 错误重试失败';
       }
     },
 
